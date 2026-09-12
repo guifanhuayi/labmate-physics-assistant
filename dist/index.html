@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LabMate · 物理实验数字助手</title>
+  <meta name="description" content="面向大学物理实验课堂的数据采集、智能校验与报告生成工作台。" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307111f'/%3E%3Cpath d='M15 44h34M20 38l8-10 7 6 10-17' fill='none' stroke='%2346e0d0' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='45' cy='17' r='4' fill='%23ffcb69'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --panel: #0d1b2b;
+      --panel-2: #102238;
+      --line: rgba(146, 188, 222, .16);
+      --text: #eef7ff;
+      --muted: #91a9bd;
+      --cyan: #46e0d0;
+      --cyan-soft: rgba(70, 224, 208, .12);
+      --amber: #ffcb69;
+      --danger: #ff7b86;
+      --blue: #72a7ff;
+      --shadow: 0 24px 60px rgba(0, 0, 0, .24);
+    }
+
+    * { box-sizing: border-box; }
+    html { font-size: 16px; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at 70% -20%, rgba(70, 224, 208, .13), transparent 34rem),
+        linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px),
+        var(--bg);
+      background-size: auto, 32px 32px, 32px 32px, auto;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: rgba(5, 15, 27, .83);
+      backdrop-filter: blur(18px);
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 26px; }
+    .brand-mark { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--cyan); color: #06211e; font-weight: 900; box-shadow: 0 0 28px rgba(70,224,208,.22); }
+    .brand strong { font-size: 1.12rem; letter-spacing: .02em; }
+    .brand small { display: block; color: var(--muted); margin-top: 2px; }
+    .nav-label { padding: 0 10px; margin: 12px 0 9px; color: #668198; font-size: .76rem; letter-spacing: .11em; }
+    .nav-item { width: 100%; border: 0; background: transparent; text-align: left; padding: 11px 12px; border-radius: 10px; display: flex; gap: 11px; align-items: center; color: #a9bece; cursor: pointer; }
+    .nav-item.active { background: var(--cyan-soft); color: var(--cyan); }
+    .nav-item svg { width: 18px; height: 18px; }
+    .side-card { margin-top: auto; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.025); }
+    .side-card small { color: var(--muted); }
+    .side-card strong { display: block; margin: 5px 0 10px; font-size: .9rem; }
+    .progress-line { height: 5px; border-radius: 4px; background: #162c40; overflow: hidden; }
+    .progress-line i { display: block; height: 100%; width: 54%; background: var(--cyan); }
+    .main { min-width: 0; padding: 20px 28px 34px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 50px; margin-bottom: 18px; }
+    .breadcrumb { color: var(--muted); font-size: .9rem; }
+    .breadcrumb b { color: var(--text); font-weight: 600; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .role-switch { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: rgba(4,14,24,.55); }
+    .role-btn { border: 0; background: transparent; color: var(--muted); border-radius: 7px; padding: 6px 10px; font-size: .8rem; cursor: pointer; white-space: nowrap; }
+    .role-btn.active { background: #1c3850; color: var(--text); }
+    .status-chip { display: inline-flex; align-items: center; gap: 7px; color: #acd1c9; font-size: .83rem; padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; background: #18334d; display: grid; place-items: center; font-size: .85rem; }
+    .experiment-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin: 8px 0 18px; }
+    .eyebrow { color: var(--cyan); font-size: .78rem; letter-spacing: .16em; font-weight: 700; }
+    h1 { font-size: clamp(1.75rem, 3vw, 2.65rem); line-height: 1.1; margin: 7px 0 9px; letter-spacing: -.03em; }
+    .subtitle { color: var(--muted); margin: 0; }
+    .stepper { display: flex; gap: 6px; flex-wrap: wrap; }
+    .step { border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; font-size: .82rem; color: var(--muted); background: transparent; }
+    .step.active { color: #06211e; background: var(--cyan); border-color: var(--cyan); font-weight: 700; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .72fr); gap: 16px; align-items: start; }
+    .panel { background: linear-gradient(150deg, rgba(18,39,61,.96), rgba(10,25,40,.96)); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 1.03rem; }
+    .panel-head p { margin: 4px 0 0; color: var(--muted); font-size: .82rem; }
+    .device { color: var(--cyan); font-size: .78rem; padding: 6px 9px; border-radius: 8px; background: var(--cyan-soft); white-space: nowrap; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 610px; }
+    th { padding: 12px 14px; color: #718aa0; font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; text-align: left; background: rgba(0,0,0,.12); }
+    td { padding: 11px 14px; border-top: 1px solid var(--line); font-size: .9rem; }
+    td:first-child { color: var(--muted); }
+    .data-input { width: 92px; color: var(--text); background: #071625; border: 1px solid #28435a; border-radius: 8px; padding: 8px 9px; outline: none; }
+    .data-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(70,224,208,.1); }
+    .row-status { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; }
+    .row-status.ok { color: var(--cyan); }
+    .row-status.warn { color: var(--amber); }
+    .table-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 20px; border-top: 1px solid var(--line); }
+    .trace { color: var(--muted); font-size: .78rem; }
+    .btn { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: #152a40; cursor: pointer; font-weight: 650; transition: .18s ease; }
+    .btn:hover { transform: translateY(-1px); border-color: #42627e; }
+    .btn.primary { border-color: var(--cyan); background: var(--cyan); color: #06211e; }
+    .btn.ghost { background: transparent; }
+    .insight { padding: 18px; }
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .metric { padding: 13px; border-radius: 12px; border: 1px solid var(--line); background: rgba(4,14,24,.35); }
+    .metric small { color: var(--muted); }
+    .metric strong { display: block; font-size: 1.42rem; margin-top: 5px; letter-spacing: -.03em; }
+    .metric strong span { font-size: .8rem; color: var(--muted); font-weight: 500; }
+    .quality { padding: 14px; border-radius: 13px; background: rgba(255,203,105,.09); border: 1px solid rgba(255,203,105,.23); }
+    .quality-head { display: flex; align-items: center; justify-content: space-between; color: var(--amber); font-weight: 700; font-size: .9rem; }
+    .quality p { color: #c5b897; line-height: 1.55; font-size: .84rem; margin: 9px 0 12px; }
+    .quality button { color: var(--amber); border: 0; padding: 0; background: none; cursor: pointer; font-weight: 700; }
+    .mini-chart { margin-top: 16px; border: 1px solid var(--line); border-radius: 13px; padding: 14px; }
+    .chart-title { display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; margin-bottom: 8px; }
+    .chart { height: 108px; position: relative; background: repeating-linear-gradient(to top, transparent 0 26px, rgba(255,255,255,.055) 27px); overflow: hidden; }
+    .chart svg { width: 100%; height: 100%; }
+    .toast { position: fixed; right: 24px; bottom: 24px; background: #eafcf8; color: #08241f; padding: 13px 16px; border-radius: 11px; box-shadow: 0 14px 40px rgba(0,0,0,.35); font-weight: 650; transform: translateY(24px); opacity: 0; pointer-events: none; transition: .25s ease; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    [hidden] { display: none !important; }
+    .analysis-panel { margin-top: 16px; }
+    .analysis-body { padding: 18px 20px; display: grid; grid-template-columns: minmax(0,1fr) 260px; gap: 18px; }
+    .formula { color: #b9d2e4; font-family: Cambria, Georgia, serif; font-size: 1.05rem; margin-bottom: 12px; }
+    .fit-chart { height: 170px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: rgba(3,12,22,.38); }
+    .fit-chart svg { width: 100%; height: 100%; }
+    .result-stack { display: grid; gap: 9px; }
+    .result-row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: .84rem; }
+    .result-row b { color: var(--text); }
+    .teacher-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin: 10px 0 18px; }
+    .teacher-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-card { border: 1px solid var(--line); border-radius: 15px; padding: 16px; background: linear-gradient(145deg, rgba(17,38,58,.95), rgba(9,23,37,.95)); }
+    .stat-card span { color: var(--muted); font-size: .82rem; }
+    .stat-card strong { display: block; font-size: 1.65rem; margin-top: 7px; }
+    .stat-card em { color: var(--cyan); font-size: .76rem; font-style: normal; }
+    .teacher-layout { display: grid; grid-template-columns: minmax(0,1.45fr) minmax(270px,.6fr); gap: 16px; align-items: start; }
+    .submission-list { padding: 4px 18px 12px; }
+    .submission { display: grid; grid-template-columns: minmax(120px,1.2fr) 1fr .8fr auto; gap: 12px; align-items: center; padding: 14px 2px; border-bottom: 1px solid var(--line); }
+    .student-name { display: flex; align-items: center; gap: 10px; font-weight: 650; }
+    .student-name i { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: #17334b; color: #b9d7e8; font-style: normal; font-size: .76rem; }
+    .submission small { color: var(--muted); }
+    .badge { display: inline-flex; width: fit-content; padding: 5px 8px; border-radius: 7px; font-size: .75rem; background: var(--cyan-soft); color: var(--cyan); }
+    .badge.warn { color: var(--amber); background: rgba(255,203,105,.1); }
+    .badge.danger { color: var(--danger); background: rgba(255,123,134,.1); }
+    .review-btn { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+    .alerts { padding: 16px; }
+    .alert-item { padding: 12px; border: 1px solid var(--line); border-radius: 11px; margin-bottom: 10px; }
+    .alert-item b { display: block; font-size: .86rem; margin-bottom: 5px; }
+    .alert-item p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.5; }
+    .modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(1,7,13,.74); backdrop-filter: blur(8px); }
+    .modal-card { width: min(760px,100%); max-height: 88vh; overflow: auto; border: 1px solid #315069; border-radius: 18px; background: #0c1d2d; box-shadow: 0 30px 90px rgba(0,0,0,.55); }
+    .modal-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+    .modal-head h2 { margin: 0 0 5px; }
+    .modal-head p { margin: 0; color: var(--muted); font-size: .84rem; }
+    .close-btn { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: transparent; cursor: pointer; }
+    .report { background: #f8fbfd; color: #172634; margin: 20px; padding: 28px; border-radius: 10px; }
+    .report h3 { margin: 0 0 5px; font-size: 1.38rem; }
+    .report-meta { color: #697b89; font-size: .78rem; padding-bottom: 14px; border-bottom: 1px solid #dbe4e9; }
+    .report h4 { margin: 18px 0 8px; }
+    .report p { color: #425461; line-height: 1.65; font-size: .88rem; }
+    .report-table { width: 100%; min-width: 0; color: #243744; }
+    .report-table th { color: #526b79; background: #eaf1f5; }
+    .report-table td { border-color: #dbe4e9; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 0 20px 20px; }
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 78px minmax(0,1fr); }
+      .sidebar { padding: 20px 12px; }
+      .brand { padding-inline: 7px; }
+      .brand > div:last-child, .nav-label, .nav-item span, .side-card { display: none; }
+      .nav-item { justify-content: center; padding: 12px; }
+      .workspace { grid-template-columns: 1fr; }
+      .teacher-grid { grid-template-columns: repeat(2,1fr); }
+      .teacher-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .app { display: block; }
+      .sidebar { height: auto; position: static; flex-direction: row; align-items: center; padding: 12px 14px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .brand { padding: 0; margin-right: auto; }
+      .brand > div:last-child { display: block; }
+      .sidebar nav { display: flex; }
+      .sidebar .nav-item { width: auto; }
+      .sidebar .nav-item:nth-child(n+3) { display: none; }
+      .main { padding: 16px 14px 26px; }
+      .status-chip { display: none; }
+      .role-btn { padding-inline: 8px; }
+      .experiment-head { align-items: flex-start; flex-direction: column; }
+      .stepper { width: 100%; }
+      .step { flex: 1; text-align: center; padding-inline: 7px; }
+      .table-actions { align-items: stretch; flex-direction: column; }
+      .table-actions .btn { width: 100%; }
+      .toast { left: 14px; right: 14px; bottom: 14px; }
+      .analysis-body { grid-template-columns: 1fr; }
+      .teacher-hero { align-items: flex-start; flex-direction: column; }
+      .submission { grid-template-columns: 1fr auto; }
+      .submission > :nth-child(2), .submission > :nth-child(3) { display: none; }
+      .report { margin: 12px; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">λ</div>
+        <div><strong>LabMate</strong><small>物理实验助手</small></div>
+      </div>
+      <nav aria-label="主导航">
+        <div class="nav-label">实验空间</div>
+        <button class="nav-item active" type="button" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6M10 3v5l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17l-5-9V3"/><path d="M7.5 15h9"/></svg><span>当前实验</span>
+        </button>
+        <button class="nav-item" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg><span>实验记录</span>
+        </button>
+        <div class="nav-label">课程</div>
+        <button class="nav-item" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6l9-4 9 4-9 4-9-4z"/><path d="M5 9v6c3 3 11 3 14 0V9"/></svg><span>大学物理实验</span>
+        </button>
+      </nav>
+      <div class="side-card"><small>本学期进度</small><strong>7 / 13 个实验</strong><div class="progress-line"><i></i></div></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumb">大学物理实验 / <b>实验进行中</b></div>
+        <div class="top-actions"><div class="role-switch" aria-label="切换角色"><button class="role-btn active" id="studentRole" type="button">学生端</button><button class="role-btn" id="teacherRole" type="button">教师端</button></div><span class="status-chip"><i class="dot"></i>实验室网络已连接</span><div class="avatar">林澈</div></div>
+      </header>
+
+      <div id="studentView">
+      <section class="experiment-head">
+        <div><div class="eyebrow">EXPERIMENT 07</div><h1>单摆法测重力加速度</h1><p class="subtitle">实验台 B-14 · 2026 年 9 月 12 日 14:32 开始</p></div>
+        <div class="stepper" aria-label="实验步骤"><span class="step active">01 数据采集</span><span class="step">02 处理分析</span><span class="step">03 生成报告</span></div>
+      </section>
+
+      <section class="workspace">
+        <article class="panel">
+          <div class="panel-head"><div><h2>原始测量数据</h2><p>记录摆长与 20 次全振动时间，系统将实时检查合理性</p></div><span class="device">手机 · 实验室 Wi‑Fi</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>序号</th><th>摆长 L / cm</th><th>20T / s</th><th>周期 T / s</th><th>检查</th></tr></thead>
+              <tbody id="dataRows">
+                <tr><td>01</td><td><input class="data-input length" value="45.00" inputmode="decimal" aria-label="第1组摆长"></td><td><input class="data-input time" value="26.92" inputmode="decimal" aria-label="第1组20次周期时间"></td><td class="period">1.346</td><td><span class="row-status ok">● 合理</span></td></tr>
+                <tr><td>02</td><td><input class="data-input length" value="50.00" inputmode="decimal" aria-label="第2组摆长"></td><td><input class="data-input time" value="28.38" inputmode="decimal" aria-label="第2组20次周期时间"></td><td class="period">1.419</td><td><span class="row-status ok">● 合理</span></td></tr>
+                <tr><td>03</td><td><input class="data-input length" value="55.00" inputmode="decimal" aria-label="第3组摆长"></td><td><input class="data-input time" value="29.71" inputmode="decimal" aria-label="第3组20次周期时间"></td><td class="period">1.486</td><td><span class="row-status ok">● 合理</span></td></tr>
+                <tr><td>04</td><td><input class="data-input length" value="60.00" inputmode="decimal" aria-label="第4组摆长"></td><td><input class="data-input time" value="33.86" inputmode="decimal" aria-label="第4组20次周期时间"></td><td class="period">1.693</td><td><span class="row-status warn">▲ 建议复测</span></td></tr>
+                <tr><td>05</td><td><input class="data-input length" value="65.00" inputmode="decimal" aria-label="第5组摆长"></td><td><input class="data-input time" value="32.33" inputmode="decimal" aria-label="第5组20次周期时间"></td><td class="period">1.617</td><td><span class="row-status ok">● 合理</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-actions"><div class="trace">已自动留痕 · 最近保存 14:46:08 · 数据水印 LM-0912-B14</div><button class="btn primary" id="analyzeBtn" type="button">保存并开始分析 →</button></div>
+        </article>
+
+        <aside class="panel insight">
+          <div class="panel-head" style="padding:0 0 16px;border:0"><div><h2>实时测量反馈</h2><p>根据理论模型与本班数据区间判断</p></div></div>
+          <div class="metric-grid"><div class="metric"><small>当前估算 g</small><strong id="gValue">9.62 <span>m/s²</span></strong></div><div class="metric"><small>数据完整度</small><strong>5/5 <span>组</span></strong></div></div>
+          <div class="quality"><div class="quality-head"><span>第 4 组偏差较大</span><span>6.8%</span></div><p>计时值高于相邻趋势，可能是摆角过大或计数误差。建议保持摆角小于 5° 后复测。</p><button type="button" id="markBtn">标记为待复测 →</button></div>
+          <div class="mini-chart"><div class="chart-title"><span>T²–L 趋势预览</span><span>R² 0.984</span></div><div class="chart"><svg viewBox="0 0 260 108" preserveAspectRatio="none" aria-label="周期平方与摆长关系趋势图"><path d="M6 96 C45 84 68 75 94 66 S150 43 180 34 S225 17 254 10" fill="none" stroke="#46e0d0" stroke-width="3"/><path d="M6 96 C45 84 68 75 94 66 S150 43 180 34 S225 17 254 10 L254 108 L6 108Z" fill="url(#area)"/><circle cx="32" cy="85" r="4" fill="#72a7ff"/><circle cx="83" cy="69" r="4" fill="#72a7ff"/><circle cx="133" cy="54" r="4" fill="#72a7ff"/><circle cx="184" cy="20" r="5" fill="#ffcb69"/><circle cx="234" cy="20" r="4" fill="#72a7ff"/><defs><linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#46e0d0" stop-opacity=".2"/><stop offset="1" stop-color="#46e0d0" stop-opacity="0"/></linearGradient></defs></svg></div></div>
+        </aside>
+      </section>
+      <section class="panel analysis-panel" id="analysisPanel" hidden>
+        <div class="panel-head"><div><h2>拟合与不确定度分析</h2><p>系统已按最小二乘法处理，异常点仍保留在原始记录中</p></div><button class="btn primary" id="reportBtn" type="button">预览实验报告</button></div>
+        <div class="analysis-body"><div><div class="formula">T² = (4π² / g) · L</div><div class="fit-chart"><svg viewBox="0 0 520 170" preserveAspectRatio="none" aria-label="线性拟合图"><path d="M35 12V145H505" fill="none" stroke="#395066"/><path d="M50 134L492 18" fill="none" stroke="#46e0d0" stroke-width="3"/><g fill="#72a7ff"><circle cx="82" cy="126" r="5"/><circle cx="180" cy="103" r="5"/><circle cx="276" cy="79" r="5"/><circle cx="470" cy="30" r="5"/></g><circle cx="374" cy="42" r="6" fill="#ffcb69"/><g fill="#7890a4" font-size="11"><text x="9" y="18">T²</text><text x="493" y="162">L</text></g></svg></div></div><div class="result-stack"><div class="result-row"><span>拟合斜率 k</span><b>4.052 s²/m</b></div><div class="result-row"><span>相关系数 R²</span><b>0.9984</b></div><div class="result-row"><span>重力加速度 g</span><b>9.743 m/s²</b></div><div class="result-row"><span>相对误差</span><b>0.68%</b></div><div class="result-row"><span>合成不确定度</span><b>0.041 m/s²</b></div></div></div>
+      </section>
+      </div>
+
+      <div id="teacherView" hidden>
+        <section class="teacher-hero"><div><div class="eyebrow">TEACHER CONSOLE</div><h1>实验进度与批改</h1><p class="subtitle">大学物理实验 A2 班 · 单摆法测重力加速度</p></div><button class="btn primary" type="button" id="templateBtn">编辑实验模板</button></section>
+        <section class="teacher-grid"><div class="stat-card"><span>已提交</span><strong>28 / 36</strong><em>较上次实验 +3</em></div><div class="stat-card"><span>进行中</span><strong>6</strong><em>2 人超过 90 分钟</em></div><div class="stat-card"><span>异常数据</span><strong>4</strong><em>等待复核</em></div><div class="stat-card"><span>高相似报告</span><strong>2</strong><em>相似度 ≥ 85%</em></div></section>
+        <section class="teacher-layout">
+          <article class="panel"><div class="panel-head"><div><h2>学生提交</h2><p>按风险优先展示，自动核对数据、计算与报告相似度</p></div><span class="device">实时更新</span></div><div class="submission-list">
+            <div class="submission"><div class="student-name"><i>LC</i><span>林澈</span></div><small>14:48 提交 · B-14</small><span class="badge warn">1 处数据异常</span><button class="review-btn" type="button">查看</button></div>
+            <div class="submission"><div class="student-name"><i>ZY</i><span>周遥</span></div><small>14:43 提交 · B-12</small><span class="badge danger">报告相似 91%</span><button class="review-btn" type="button">查看</button></div>
+            <div class="submission"><div class="student-name"><i>WH</i><span>吴昊</span></div><small>14:39 提交 · B-09</small><span class="badge">校验通过</span><button class="review-btn" type="button">查看</button></div>
+            <div class="submission"><div class="student-name"><i>CY</i><span>陈雨</span></div><small>14:31 提交 · B-05</small><span class="badge warn">计算误差</span><button class="review-btn" type="button">查看</button></div>
+            <div class="submission"><div class="student-name"><i>SF</i><span>苏凡</span></div><small>14:26 提交 · B-03</small><span class="badge">校验通过</span><button class="review-btn" type="button">查看</button></div>
+          </div></article>
+          <aside class="panel alerts"><div class="panel-head" style="padding:0 0 14px;border:0"><div><h2>需要关注</h2><p>系统根据课堂规则自动聚合</p></div></div><div class="alert-item"><b style="color:var(--danger)">疑似共用原始数据</b><p>周遥与许嘉的 5 组计时数据完全一致，录入时间相隔 3 分钟。</p></div><div class="alert-item"><b style="color:var(--amber)">实验过程超时</b><p>B-07、B-16 已停留在数据采集阶段超过 90 分钟。</p></div><div class="alert-item"><b style="color:var(--blue)">常用评语</b><p>已准备 12 条评语模板，可在批改页一键插入并修改。</p></div></aside>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div class="modal" id="reportModal" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <div class="modal-card"><div class="modal-head"><div><h2 id="reportTitle">实验报告预览</h2><p>根据当前数据自动生成，可继续补充讨论后导出</p></div><button class="close-btn" id="closeModal" type="button" aria-label="关闭">×</button></div><article class="report"><h3>单摆法测重力加速度实验报告</h3><div class="report-meta">林澈 · 物理 2402 班 · 实验台 B-14 · 数据水印 LM-0912-B14</div><h4>一、实验结果</h4><p>采用不同摆长测量单摆周期，并对 T²–L 进行线性拟合。剔除第 4 组建议复测数据后，拟合相关系数 R² = 0.9984，计算得到重力加速度 g = (9.743 ± 0.041) m/s²，与参考值的相对误差为 0.68%。</p><table class="report-table"><thead><tr><th>物理量</th><th>测量结果</th><th>不确定度</th></tr></thead><tbody><tr><td>拟合斜率 k</td><td>4.052 s²/m</td><td>0.017 s²/m</td></tr><tr><td>重力加速度 g</td><td>9.743 m/s²</td><td>0.041 m/s²</td></tr></tbody></table><h4>二、结论与讨论</h4><p>实验结果在合理误差范围内。第 4 组数据明显偏离拟合趋势，可能与摆角偏大或人工计时反应延迟有关。复测时应将初始摆角控制在 5°以内，并在摆球经过平衡位置时开始计时。</p></article><div class="modal-actions"><button class="btn ghost" type="button" id="editReport">补充讨论</button><button class="btn primary" type="button" id="exportReport">导出 PDF / Word</button></div></div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    const rows = [...document.querySelectorAll('#dataRows tr')];
+    const toast = document.getElementById('toast');
+    function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => toast.classList.remove('show'), 2600); }
+    function recalc() {
+      let gSum = 0, count = 0;
+      rows.forEach((row) => {
+        const L = Number(row.querySelector('.length').value) / 100;
+        const total = Number(row.querySelector('.time').value);
+        const period = total / 20;
+        row.querySelector('.period').textContent = Number.isFinite(period) ? period.toFixed(3) : '—';
+        if (L > 0 && period > 0) { gSum += 4 * Math.PI * Math.PI * L / (period * period); count++; }
+      });
+      if (count) document.getElementById('gValue').innerHTML = `${(gSum / count).toFixed(2)} <span>m/s²</span>`;
+    }
+    document.querySelectorAll('.data-input').forEach(input => input.addEventListener('input', recalc));
+    document.getElementById('markBtn').addEventListener('click', () => showToast('第 4 组已标记，复测后可直接覆盖原值'));
+    document.getElementById('analyzeBtn').addEventListener('click', () => { document.getElementById('analysisPanel').hidden = false; document.querySelectorAll('.step').forEach((el,i) => el.classList.toggle('active', i === 1)); showToast('分析完成，已生成拟合与不确定度结果'); document.getElementById('analysisPanel').scrollIntoView({behavior:'smooth', block:'start'}); });
+    const studentRole = document.getElementById('studentRole');
+    const teacherRole = document.getElementById('teacherRole');
+    const studentView = document.getElementById('studentView');
+    const teacherView = document.getElementById('teacherView');
+    function setRole(role) { const teacher = role === 'teacher'; studentView.hidden = teacher; teacherView.hidden = !teacher; studentRole.classList.toggle('active', !teacher); teacherRole.classList.toggle('active', teacher); document.querySelector('.avatar').textContent = teacher ? '周老师' : '林澈'; }
+    studentRole.addEventListener('click', () => setRole('student'));
+    teacherRole.addEventListener('click', () => setRole('teacher'));
+    document.getElementById('templateBtn').addEventListener('click', () => showToast('实验模板编辑器将在下一阶段接入'));
+    document.querySelectorAll('.review-btn').forEach(btn => btn.addEventListener('click', () => showToast('已打开该学生的异常定位与批改视图')));
+    const reportModal = document.getElementById('reportModal');
+    document.getElementById('reportBtn').addEventListener('click', () => { reportModal.hidden = false; document.querySelectorAll('.step').forEach((el,i) => el.classList.toggle('active', i === 2)); });
+    document.getElementById('closeModal').addEventListener('click', () => reportModal.hidden = true);
+    reportModal.addEventListener('click', e => { if (e.target === reportModal) reportModal.hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') reportModal.hidden = true; });
+    document.getElementById('editReport').addEventListener('click', () => showToast('讨论段已切换为可编辑状态'));
+    document.getElementById('exportReport').addEventListener('click', () => showToast('MVP 演示：报告已进入导出队列'));
+
+    if (document.modelContext?.registerTool) {
+      const lifecycle = new AbortController();
+      Promise.resolve(document.modelContext.registerTool({
+        name: 'update_measurements',
+        title: '更新实验测量值',
+        description: '批量更新当前单摆实验的摆长与20次全振动时间，并刷新页面计算结果。',
+        inputSchema: { type: 'object', properties: { measurements: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { row: { type: 'integer', minimum: 1, maximum: 5 }, lengthCm: { type: 'number', exclusiveMinimum: 0 }, totalTimeSeconds: { type: 'number', exclusiveMinimum: 0 } }, required: ['row','lengthCm','totalTimeSeconds'], additionalProperties: false } } }, required: ['measurements'], additionalProperties: false },
+        annotations: { readOnlyHint: false, untrustedContentHint: false },
+        execute(input) {
+          if (!input || !Array.isArray(input.measurements)) throw new Error('measurements 必须是数组');
+          input.measurements.forEach(item => { const row = rows[item.row - 1]; if (!row || item.lengthCm <= 0 || item.totalTimeSeconds <= 0) throw new Error('测量数据无效'); row.querySelector('.length').value = item.lengthCm.toFixed(2); row.querySelector('.time').value = item.totalTimeSeconds.toFixed(2); });
+          recalc();
+          showToast('测量数据已更新');
+          return { updatedRows: input.measurements.map(item => item.row), estimatedG: document.getElementById('gValue').textContent.trim() };
+        }
+      }, { signal: lifecycle.signal })).catch(() => {});
+    }
+  </script>
+</body>
+</html>
