@@ -127,8 +127,7 @@
       box-shadow: 0 15px 34px rgba(0, 113, 227, .24), inset 0 1px 0 rgba(255,255,255,.35);
     }
     .identity-mark svg { width: 27px; height: 27px; }
-    h1 { margin: 0; text-align: center; font-size: clamp(2rem, 6vw, 2.55rem); line-height: 1.08; letter-spacing: -.045em; font-weight: 700; }
-    .intro { margin: 12px auto 30px; text-align: center; color: var(--secondary); line-height: 1.6; }
+    .intro { margin: 5px auto 30px; text-align: center; color: var(--ink); font-size: clamp(1.45rem, 4vw, 1.75rem); font-weight: 700; letter-spacing: -.025em; line-height: 1.35; }
 
     .field { margin-bottom: 16px; }
     .field label { display: block; margin: 0 0 8px 3px; color: #3b3b3d; font-size: .9rem; font-weight: 600; }
@@ -267,7 +266,9 @@
     @media (max-width: 560px) {
       .page { padding: 0 16px; }
       .topbar { min-height: 68px; }
-      .secure-label span { display: none; }
+      .secure-label { max-width: 164px; justify-content: flex-end; text-align: right; line-height: 1.4; }
+      .secure-label span { display: inline; }
+      .brand-copy span { display: none; }
       main { padding: 24px 0 38px; align-items: start; }
       .login-card { padding: 32px 22px 26px; border-radius: 24px; }
       .intro { margin-bottom: 25px; }
@@ -288,7 +289,7 @@
       </a>
       <span class="secure-label">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        <span>大学实验 · 安全登录</span>
+        <span>大连理工大学公共基础学院物理实验室</span>
       </span>
     </header>
 
@@ -298,8 +299,7 @@
           <div class="identity-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h10M9 3v5l-4.4 7.1A3.8 3.8 0 0 0 7.8 21h8.4a3.8 3.8 0 0 0 3.2-5.9L15 8V3"/><path d="M7.2 14h9.6"/></svg>
           </div>
-          <h1 id="loginTitle">欢迎回来</h1>
-          <p class="intro">登录后继续你的大学物理实验</p>
+          <p class="intro" id="loginTitle">登录后继续你的大学物理实验</p>
 
           <form id="loginForm" novalidate>
             <div class="field">
