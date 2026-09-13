@@ -40,32 +40,39 @@
 
     button, input { font: inherit; }
     button { color: inherit; }
-    .app { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
+    .app { min-height: 100vh; display: block; }
     .sidebar {
-      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
       background: rgba(232, 245, 255, .94);
       backdrop-filter: blur(18px);
-      padding: 24px 18px;
+      padding: 14px max(24px, calc((100vw - 1180px) / 2));
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
+      align-items: center;
+      gap: 18px;
       position: sticky;
       top: 0;
-      height: 100vh;
+      z-index: 10;
+      min-height: 72px;
+      width: 100%;
+      box-shadow: 0 5px 20px rgba(36, 91, 135, .06);
     }
-    .brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 26px; }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0; flex: 0 0 auto; }
     .brand-mark { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--cyan); color: #fff; font-weight: 900; box-shadow: 0 8px 22px rgba(25,118,210,.22); }
     .brand strong { font-size: 1.12rem; letter-spacing: .02em; }
     .brand small { display: block; color: var(--muted); margin-top: 2px; }
-    .nav-label { padding: 0 10px; margin: 12px 0 9px; color: #7894aa; font-size: .76rem; letter-spacing: .11em; }
+    .sidebar nav { display: flex; align-items: center; gap: 6px; }
+    .nav-label { display: none; }
     .nav-item { width: 100%; border: 0; background: transparent; text-align: left; padding: 11px 12px; border-radius: 10px; display: flex; gap: 11px; align-items: center; color: #58768e; cursor: pointer; }
+    .sidebar .nav-item { width: auto; white-space: nowrap; }
     .nav-item.active { background: #cfe8ff; color: #0f69bd; }
     .nav-item svg { width: 18px; height: 18px; color: #287fc9; }
-    .side-card { margin-top: auto; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.7); }
+    .side-card { margin: 0 0 0 auto; padding: 9px 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.72); display: grid; grid-template-columns: auto auto 88px; align-items: center; gap: 8px; }
     .side-card small { color: var(--muted); }
-    .side-card strong { display: block; margin: 5px 0 10px; font-size: .9rem; }
+    .side-card strong { display: block; margin: 0; font-size: .9rem; }
     .progress-line { height: 5px; border-radius: 4px; background: #cbddeb; overflow: hidden; }
     .progress-line i { display: block; height: 100%; width: 54%; background: var(--cyan); }
-    .main { min-width: 0; padding: 20px 28px 34px; }
+    .main { min-width: 0; width: min(1180px, 100%); margin: 0 auto; padding: 20px 28px 34px; }
     .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 56px; margin-bottom: 18px; padding: 8px 14px; border: 1px solid #d1e8f8; border-radius: 14px; background: #eaf6ff; box-shadow: 0 8px 24px rgba(42,111,164,.07); }
     .breadcrumb { color: var(--muted); font-size: .9rem; }
     .breadcrumb b { color: var(--text); font-weight: 600; }
@@ -168,9 +175,9 @@
     .report-table td { border-color: #dbe4e9; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 0 20px 20px; }
     @media (max-width: 980px) {
-      .app { grid-template-columns: 78px minmax(0,1fr); }
-      .sidebar { padding: 20px 12px; }
-      .brand { padding-inline: 7px; }
+      .app { display: block; }
+      .sidebar { padding: 12px 18px; gap: 10px; }
+      .brand { padding: 0; }
       .brand > div:last-child, .nav-label, .nav-item span, .side-card { display: none; }
       .nav-item { justify-content: center; padding: 12px; }
       .workspace { grid-template-columns: 1fr; }
@@ -179,12 +186,11 @@
     }
     @media (max-width: 640px) {
       .app { display: block; }
-      .sidebar { height: auto; position: static; flex-direction: row; align-items: center; padding: 12px 14px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .sidebar { min-height: 58px; height: auto; position: sticky; flex-direction: row; align-items: center; padding: 10px 14px; border-right: 0; border-bottom: 1px solid var(--line); }
       .brand { padding: 0; margin-right: auto; }
-      .brand > div:last-child { display: block; }
-      .sidebar nav { display: flex; }
-      .sidebar .nav-item { width: auto; }
-      .sidebar .nav-item:nth-child(n+3) { display: none; }
+      .brand > div:last-child { display: none; }
+      .sidebar nav { display: flex; gap: 2px; }
+      .sidebar .nav-item { width: auto; padding: 10px; }
       .main { padding: 16px 14px 26px; }
       .status-chip { display: none; }
       .role-btn { padding-inline: 8px; }
@@ -211,14 +217,14 @@
       </div>
       <nav aria-label="主导航">
         <div class="nav-label">实验空间</div>
-        <button class="nav-item active" type="button" aria-current="page">
+        <button class="nav-item active" type="button" aria-current="page" aria-label="当前实验">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6M10 3v5l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 17l-5-9V3"/><path d="M7.5 15h9"/></svg><span>当前实验</span>
         </button>
-        <button class="nav-item" type="button">
+        <button class="nav-item" type="button" aria-label="实验记录">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg><span>实验记录</span>
         </button>
         <div class="nav-label">课程</div>
-        <button class="nav-item" type="button">
+        <button class="nav-item" type="button" aria-label="大学物理实验课程">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6l9-4 9 4-9 4-9-4z"/><path d="M5 9v6c3 3 11 3 14 0V9"/></svg><span>大学物理实验</span>
         </button>
       </nav>
