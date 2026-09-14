@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>登录 · LabMate 物理实验数字助手</title>
-  <meta name="description" content="登录 LabMate 物理实验数字助手，进入大学物理实验工作台。" />
+  <title>登录 · LabMate 1.0 物理实验数字助手</title>
+  <meta name="description" content="登录 LabMate 1.0，按学校身份进入学生实验工作台或教师管理工作台。" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23007aff'/%3E%3Cpath d='M18 45h28M22 39l7-10 7 6 8-17' fill='none' stroke='white' stroke-width='5' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E" />
   <style>
     :root {
@@ -323,7 +323,7 @@
                 <input id="identityId" name="identityId" autocomplete="username" placeholder="请输入学号或工号" maxlength="24" required />
               </div>
             </div>
-            <p class="identity-hint">系统将根据学校账号信息自动识别学生或教师身份。</p>
+            <p class="identity-hint">系统将根据学号或工号自动分配学生工作台与教师工作台，无需手动切换。</p>
             <p class="error" id="formError" role="alert" aria-live="polite"></p>
             <button class="primary" type="submit">进入实验空间</button>
           </form>
@@ -340,7 +340,7 @@
               邮箱
             </button>
           </div>
-          <p class="prototype-note">当前为 MVP 交互原型。微信、QQ 与邮箱正式授权将在接入学校账号系统及开放平台后启用。</p>
+          <p class="prototype-note">LabMate 1.0 · 身份识别、实验数据分析与教学管理一体化</p>
         </div>
       </section>
     </main>
@@ -399,15 +399,23 @@
       formError.textContent = '';
     }
 
-    function saveDemoSession(method, extra = {}) {
+    function resolveRole(identityId) {
+      const id = String(identityId || '').trim();
+      return /^(T|J|EMP|TEA|FAC)/i.test(id) || /^\d{4,8}$/.test(id) ? 'teacher' : 'student';
+    }
+
+    function saveSession(method, extra = {}) {
+      const identityId = fields.identityId.value.trim();
+      const role = resolveRole(identityId);
       sessionStorage.setItem('labmate_session', JSON.stringify({
         name: fields.name.value.trim() || '实验用户',
         phone: fields.phone.value.trim(),
-        identityId: fields.identityId.value.trim(),
+        identityId,
+        role,
         loginMethod: method,
         ...extra
       }));
-      window.location.href = 'lab.html';
+      window.location.href = role === 'teacher' ? 'teacher.html' : 'student.html';
     }
 
     loginForm.addEventListener('submit', (event) => {
@@ -427,7 +435,7 @@
         formError.textContent = message;
         return;
       }
-      saveDemoSession('学校账号');
+      saveSession('学校账号');
     });
 
     Object.values(fields).forEach((field) => field.addEventListener('input', () => {
@@ -443,11 +451,11 @@
       emailFields.hidden = provider !== '邮箱';
       dialogStatus.textContent = '';
       if (provider === '邮箱') {
-        providerDescription.textContent = '输入学校或个人邮箱完成验证码登录。当前验证码流程为 MVP 演示。';
+        providerDescription.textContent = '输入学校邮箱完成验证码登录。账号绑定后将自动进入对应身份工作台。';
         providerContinue.textContent = '验证并登录';
       } else {
-        providerDescription.textContent = `正式版将跳转到${provider}开放平台完成安全授权。当前可继续体验登录后的实验界面。`;
-        providerContinue.textContent = '继续体验';
+        providerDescription.textContent = `使用${provider}完成账号验证，系统将根据已绑定的学校账号识别身份。`;
+        providerContinue.textContent = '验证并登录';
       }
       providerDialog.classList.add('open');
       document.body.style.overflow = 'hidden';
@@ -485,10 +493,10 @@
         const code = document.getElementById('emailCode').value.trim();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { dialogStatus.textContent = '请输入有效邮箱地址。'; return; }
         if (!/^\d{6}$/.test(code)) { dialogStatus.textContent = '请输入 6 位演示验证码。'; return; }
-        saveDemoSession('邮箱', { email });
+        saveSession('邮箱', { email });
         return;
       }
-      saveDemoSession(activeProvider);
+      saveSession(activeProvider);
     });
   </script>
 </body>
