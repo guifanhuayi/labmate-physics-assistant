@@ -1,0 +1,17 @@
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+__pycache__/
+*.py[cod]
+backend/*.sqlite
+backend/preview-server.*.log
+backend/*.egg-info/
+.venv/
+frontend/node_modules/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/dist/
+*.tsbuildinfo
+.sites-runtime/
