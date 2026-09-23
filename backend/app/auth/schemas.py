@@ -12,6 +12,12 @@ class LoginRequest(BaseModel):
     password: str = Field(max_length=256)
 
 
+class AuthModeView(BaseModel):
+    demo_enabled: bool = Field(alias="demoEnabled")
+    demo_accounts: dict[RoleName, str] = Field(alias="demoAccounts")
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class StudentEnrollmentIdentity(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     student_number: str = Field(alias="studentNumber", min_length=1, max_length=64)

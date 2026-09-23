@@ -11,6 +11,7 @@ const student = {
   enrollmentCompleted: true,
   phoneMasked: '138****0001',
 }
+const mode = { demoEnabled: false, demoAccounts: { student: '20260001', teacher: 't0001', admin: 'admin' } }
 
 describe('auth store through the HTTP interface', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -29,15 +30,16 @@ describe('auth store through the HTTP interface', () => {
   it('treats a 401 bootstrap response as a guest session', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: { code: 'unauthenticated', message: '请先登录。' } }), { status: 401 }),
-      ),
+      vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify(mode), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'unauthenticated', message: '请先登录。' } }), { status: 401 })),
     )
     const auth = useAuthStore()
 
     await auth.bootstrap()
 
     expect(auth.status).toBe('guest')
+    expect(auth.mode).toEqual(mode)
     expect(auth.user).toBeNull()
   })
 })

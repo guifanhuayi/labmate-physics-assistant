@@ -42,19 +42,19 @@ async function signOut() {
     <main class="workspace-shell">
       <section class="workspace-intro">
         <div>
-          <p class="eyebrow">身份验证已启用</p>
+          <p class="eyebrow">{{ auth.mode?.demoEnabled ? '演示工作台' : '身份验证已启用' }}</p>
           <h1>{{ auth.workspace?.title || `${roleLabel}工作台` }}</h1>
           <p>{{ auth.workspace?.description || '正在读取工作台权限…' }}</p>
         </div>
-        <span class="verified-badge">服务器已验证</span>
+        <span class="verified-badge">{{ auth.mode?.demoEnabled ? '演示角色已识别' : '服务器已验证' }}</span>
       </section>
       <p v-if="errorMessage" class="form-error panel-error" role="alert">{{ errorMessage }}</p>
       <section v-else class="empty-workspace" aria-live="polite">
         <div class="empty-symbol" aria-hidden="true">λ</div>
         <h2>{{ loading ? '正在加载工作台' : '基础工作台已经就绪' }}</h2>
-        <p v-if="!loading">当前版本已开放真实身份、持久会话和角色权限。后续功能将按纵向业务切片逐步接入。</p>
+        <p v-if="!loading">{{ auth.mode?.demoEnabled ? '当前为功能演示：账号用于选择角色，数字密码不作为正式账号密码。' : '当前版本已开放真实身份、持久会话和角色权限。后续功能将按纵向业务切片逐步接入。' }}</p>
         <div v-if="!loading" class="status-grid">
-          <div><span>登录方式</span><strong>账号与密码</strong></div>
+          <div><span>登录方式</span><strong>{{ auth.mode?.demoEnabled ? '演示账号与数字密码' : '账号与密码' }}</strong></div>
           <div><span>当前角色</span><strong>{{ roleLabel }}</strong></div>
           <div><span>权限来源</span><strong>服务端授权</strong></div>
         </div>

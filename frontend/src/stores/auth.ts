@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
-import { ApiError, authApi, type Role, type UserView, type WorkspaceView } from '../api/client'
+import { ApiError, authApi, type AuthModeView, type Role, type UserView, type WorkspaceView } from '../api/client'
 
 type AuthStatus = 'unknown' | 'guest' | 'authenticated'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     status: 'unknown' as AuthStatus,
+    mode: null as AuthModeView | null,
     user: null as UserView | null,
     workspace: null as WorkspaceView | null,
   }),
@@ -16,6 +17,7 @@ export const useAuthStore = defineStore('auth', {
     async bootstrap() {
       if (this.status !== 'unknown') return
       try {
+        this.mode = await authApi.mode()
         this.user = await authApi.me()
         this.status = 'authenticated'
       } catch (error) {

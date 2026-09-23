@@ -159,12 +159,32 @@ def test_inactive_account_and_invalid_password_have_stable_codes(client, seed_us
     assert invalid.json()["error"]["code"] == "invalid_credentials"
 
 
-def test_demo_login_accepts_any_credentials_without_rate_limit(client, seed_user, monkeypatch) -> None:
+def test_demo_login_uses_existing_account_and_any_numeric_password(client, seed_user, monkeypatch) -> None:
     seed_user(account="20260001", enrollment_completed=False)
-    monkeypatch.setenv("DEMO_AUTH_ENABLED", "true")
-    monkeypatch.setattr(auth_api, "auth_service", AuthService(Settings()))
-    for _ in range(7):
-        response = client.post("/api/auth/login", json={"account": "任意账号", "password": "任意密码"})
+    seed_user(account="20269999", enrollment_completed=False)
+    seed_user(role="teacher", account="t0001", enrollment_completed=True)
+    seed_user(role="admin", account="admin", enrollment_completed=True)
+    demo_settings = Settings(demo_auth_enabled=True)
+    monkeypatch.setattr(auth_api, "settings", demo_settings)
+    monkeypatch.setattr(auth_api, "auth_service", AuthService(demo_settings))
+
+    mode = client.get("/api/auth/mode")
+    assert mode.status_code == 200
+    assert mode.json()["demoEnabled"] is True
+    assert mode.json()["demoAccounts"] == {"student": "20260001", "teacher": "t0001", "admin": "admin"}
+
+    for account, role in (("20260001", "student"), ("20269999", "student"), ("t0001", "teacher"), ("admin", "admin")):
+        response = client.post("/api/auth/login", json={"account": account, "password": "123"})
         assert response.status_code == 200
-        assert response.json()["role"] == "student"
-    assert client.get("/api/workspaces/student").status_code == 200
+        assert response.json()["role"] == role
+        assert client.get(f"/api/workspaces/{role}").status_code == 200
+
+    for account, password in (("", "123"), ("missing", "123"), ("20260001", "letters"), ("20260001", "")):
+        response = client.post("/api/auth/login", json={"account": account, "password": password})
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "invalid_demo_credentials"
+
+    assert client.post(
+        "/api/auth/student-enrollment/sms",
+        json={"name": "测试student", "studentNumber": "20260001", "phone": "13800000001"},
+    ).status_code == 404

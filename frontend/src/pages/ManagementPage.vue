@@ -125,7 +125,9 @@ async function commitRoster() {
   busy.value = true; error.value = ''; message.value = ''
   try {
     const result = await managementApi.commitRoster(rosterPreview.value.id)
-    message.value = `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条；${result.requiresEnrollment} 名学生需用姓名和学号完成首次设置。`
+    message.value = auth.mode?.demoEnabled
+      ? `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条。学生可用学号和任意数字密码演示登录。`
+      : `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条；${result.requiresEnrollment} 名学生需用姓名和学号完成首次设置。`
     rosterPreview.value = null
     await loadData()
     if (rosterClassId.value) await loadClassStudents(rosterClassId.value)
@@ -218,8 +220,8 @@ onMounted(loadData)
                 <p v-else-if="!classStudents.length">该班级暂时没有学生。</p>
                 <div v-else class="table-scroll">
                   <table>
-                    <thead><tr><th>序号</th><th>姓名</th><th>学号</th><th>首次设置</th></tr></thead>
-                    <tbody><tr v-for="(student, index) in classStudents" :key="student.id"><td>{{ index + 1 }}</td><td>{{ student.name }}</td><td>{{ student.studentNumber }}</td><td>{{ student.enrollmentCompleted ? '已完成' : '待完成' }}</td></tr></tbody>
+                    <thead><tr><th>序号</th><th>姓名</th><th>学号</th><th v-if="!auth.mode?.demoEnabled">首次设置</th></tr></thead>
+                    <tbody><tr v-for="(student, index) in classStudents" :key="student.id"><td>{{ index + 1 }}</td><td>{{ student.name }}</td><td>{{ student.studentNumber }}</td><td v-if="!auth.mode?.demoEnabled">{{ student.enrollmentCompleted ? '已完成' : '待完成' }}</td></tr></tbody>
                   </table>
                 </div>
               </div>

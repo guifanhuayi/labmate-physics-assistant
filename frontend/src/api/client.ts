@@ -10,6 +10,11 @@ export interface UserView {
   phoneMasked: string | null
 }
 
+export interface AuthModeView {
+  demoEnabled: boolean
+  demoAccounts: Record<Role, string>
+}
+
 export interface WorkspaceView {
   role: Role
   title: string
@@ -46,6 +51,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const authApi = {
+  mode: () => request<AuthModeView>('/api/auth/mode'),
   login: (account: string, password: string) =>
     request<UserView>('/api/auth/login', { method: 'POST', body: JSON.stringify({ account, password }) }),
   me: () => request<UserView>('/api/auth/me'),

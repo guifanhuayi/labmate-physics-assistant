@@ -145,6 +145,8 @@ class AuthService:
         phone: str,
         client_ip: str | None,
     ) -> int:
+        if self.settings.demo_auth_enabled:
+            raise AuthError("enrollment_unavailable", "演示模式无需首次设置。", 404)
         if self.settings.sms_delivery_mode != "test" or not self.settings.sms_verification_test_code:
             raise AuthError("sms_unavailable", "短信服务尚未配置，请联系管理员。", 503)
         user = self._student_for_enrollment(db, name, student_number)
@@ -193,6 +195,8 @@ class AuthService:
         password: str,
         client_ip: str | None,
     ) -> AuthenticatedSession:
+        if self.settings.demo_auth_enabled:
+            raise AuthError("enrollment_unavailable", "演示模式无需首次设置。", 404)
         user = self._student_for_enrollment(db, name, student_number)
         normalized_phone = normalize_phone(phone)
         verification = db.scalar(
@@ -246,17 +250,13 @@ class AuthService:
         db.commit()
         return result
 
-    def _authenticate_demo(self, db: Session, account: str, client_ip: str | None) -> AuthenticatedSession:
+    def _authenticate_demo(self, db: Session, account: str, password: str, client_ip: str | None) -> AuthenticatedSession:
         normalized = normalize_account(account)
-        known_accounts = {
-            normalize_account(self.settings.demo_admin_account),
-            normalize_account(self.settings.demo_teacher_account),
-            normalize_account(self.settings.demo_student_account),
-        }
-        selected_account = normalized if normalized in known_accounts else normalize_account(self.settings.demo_student_account)
-        user = db.scalar(select(User).where(User.account == selected_account, User.status == "active"))
+        if not normalized or not password.isascii() or not password.isdigit():
+            raise AuthError("invalid_demo_credentials", "请输入演示账号和任意数字密码。", 401)
+        user = db.scalar(select(User).where(User.account == normalized, User.status == "active"))
         if not user:
-            raise AuthError("demo_account_unavailable", "演示账号尚未初始化。", 503)
+            raise AuthError("invalid_demo_credentials", "演示账号不存在或已停用。", 401)
 
         result = self._create_session(db, user)
         self._audit(
@@ -264,14 +264,14 @@ class AuthService:
             "auth.login_succeeded",
             actor_id=user.id,
             resource_id=normalized,
-            metadata={"ip": client_ip, "demo": True, "mappedAccount": selected_account},
+            metadata={"ip": client_ip, "demo": True},
         )
         db.commit()
         return result
 
     def authenticate(self, db: Session, account: str, password: str, client_ip: str | None) -> AuthenticatedSession:
         if self.settings.demo_auth_enabled:
-            return self._authenticate_demo(db, account, client_ip)
+            return self._authenticate_demo(db, account, password, client_ip)
 
         normalized = normalize_account(account)
         normalized_phone = normalize_phone(account)

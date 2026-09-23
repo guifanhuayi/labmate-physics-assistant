@@ -5,6 +5,7 @@ import secrets
 from sqlalchemy import select
 
 from app.api.auth import auth_service
+from app.config import get_settings
 from app.db.models import User
 from app.db.session import SessionLocal
 
@@ -17,7 +18,8 @@ SEEDS = (
 
 
 def main() -> None:
-    missing = [password_key for role, *_, password_key in SEEDS if role != "student" and not os.getenv(password_key)]
+    demo_enabled = get_settings().demo_auth_enabled
+    missing = [password_key for role, *_, password_key in SEEDS if not demo_enabled and role != "student" and not os.getenv(password_key)]
     if missing:
         raise SystemExit("缺少种子密码环境变量：" + ", ".join(missing))
 
@@ -27,7 +29,7 @@ def main() -> None:
             if db.scalar(select(User).where(User.account == account)):
                 print(f"保留已有账号：{account}")
                 continue
-            password = os.getenv(password_key) if role != "student" else secrets.token_urlsafe(48)
+            password = os.getenv(password_key) if not demo_enabled and role != "student" else secrets.token_urlsafe(48)
             user = User(
                 account=account,
                 password_hash=auth_service.hash_password(password or secrets.token_urlsafe(48)),
@@ -41,7 +43,7 @@ def main() -> None:
                 created_at=datetime.now(UTC),
             )
             db.add(user)
-            state = "等待首次设置" if role == "student" else "可登录"
+            state = "演示登录可用" if demo_enabled else ("等待首次设置" if role == "student" else "可登录")
             print(f"创建 {role} 账号：{account}（{state}）")
         db.commit()
 

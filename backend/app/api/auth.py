@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.auth.authorization import Action, Authorizer, Principal, Role
 from app.auth.errors import AuthError
 from app.auth.schemas import (
+    AuthModeView,
     ChangePasswordRequest,
     LoginRequest,
     RoleName,
@@ -43,6 +44,18 @@ def read_current_session(
     token: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
 ) -> CurrentSession:
     return auth_service.current(db, token)
+
+
+@router.get("/auth/mode", response_model=AuthModeView)
+def auth_mode() -> AuthModeView:
+    return AuthModeView(
+        demoEnabled=settings.demo_auth_enabled,
+        demoAccounts={
+            "student": settings.demo_student_account,
+            "teacher": settings.demo_teacher_account,
+            "admin": settings.demo_admin_account,
+        } if settings.demo_auth_enabled else {},
+    )
 
 
 @router.post("/auth/login", response_model=UserView)

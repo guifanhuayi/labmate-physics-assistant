@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BrandLockup from '../components/BrandLockup.vue'
 import { ApiError } from '../api/client'
@@ -17,7 +17,8 @@ const statusMessage = ref('')
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const demoAuthEnabled = import.meta.env.VITE_DEMO_AUTH_ENABLED === 'true'
+const demoAuthEnabled = computed(() => auth.mode?.demoEnabled === true)
+const demoAccounts = computed(() => auth.mode?.demoAccounts)
 
 if (route.query.reason === 'network') errorMessage.value = '暂时无法连接服务器，请确认本地服务已启动。'
 
@@ -34,8 +35,12 @@ function switchMode(next: 'login' | 'enrollment') {
 
 async function submitLogin() {
   errorMessage.value = ''
-  if (!demoAuthEnabled && (!account.value.trim() || !password.value)) {
-    errorMessage.value = '请输入学号、手机号或工号以及密码。'
+  if (!account.value.trim() || !password.value) {
+    errorMessage.value = demoAuthEnabled.value ? '请输入演示账号和任意数字密码。' : '请输入学号、手机号或工号以及密码。'
+    return
+  }
+  if (demoAuthEnabled.value && !/^\d+$/.test(password.value)) {
+    errorMessage.value = '演示密码请填写任意数字。'
     return
   }
   submitting.value = true
@@ -106,8 +111,14 @@ async function completeEnrollment() {
       <div class="auth-context">
         <p class="eyebrow">大学物理实验</p>
         <h1>让每一次测量<br />都有可信记录</h1>
-        <p>登录后进入你的实验工作台。身份、模板版本和关键操作均由服务器验证并留痕。</p>
-        <dl>
+        <p v-if="demoAuthEnabled">输入演示账号和任意数字密码，进入对应角色的工作台。</p>
+        <p v-else>登录后进入你的实验工作台。身份、模板版本和关键操作均由服务器验证并留痕。</p>
+        <dl v-if="demoAuthEnabled">
+          <div><dt>01</dt><dd>学生使用学号登录</dd></div>
+          <div><dt>02</dt><dd>教师使用工号登录</dd></div>
+          <div><dt>03</dt><dd>管理员使用管理员账号登录</dd></div>
+        </dl>
+        <dl v-else>
           <div><dt>01</dt><dd>学生首次自行设置密码</dd></div>
           <div><dt>02</dt><dd>学号或绑定手机号登录</dd></div>
           <div><dt>03</dt><dd>不同角色独立授权</dd></div>
@@ -115,27 +126,27 @@ async function completeEnrollment() {
       </div>
       <section class="auth-card" aria-labelledby="login-title">
         <BrandLockup />
-        <div class="auth-mode-switch" role="tablist" aria-label="登录方式">
+        <div v-if="!demoAuthEnabled" class="auth-mode-switch" role="tablist" aria-label="登录方式">
           <button type="button" role="tab" :aria-selected="mode === 'login'" :class="{ active: mode === 'login' }" @click="switchMode('login')">账号登录</button>
           <button type="button" role="tab" :aria-selected="mode === 'enrollment'" :class="{ active: mode === 'enrollment' }" @click="switchMode('enrollment')">学生首次登录</button>
         </div>
 
-        <template v-if="mode === 'login'">
+        <template v-if="demoAuthEnabled || mode === 'login'">
           <div class="card-heading">
-            <p>欢迎回来</p>
+            <p>{{ demoAuthEnabled ? '演示模式' : '欢迎回来' }}</p>
             <h2 id="login-title">登录 LabMate</h2>
-            <span v-if="demoAuthEnabled">演示模式已开启，任意内容均可进入。</span>
+            <span v-if="demoAuthEnabled">按账号进入对应工作台，密码填写任意数字。</span>
             <span v-else>学生可使用学号或已绑定手机号，教师使用工号登录。</span>
           </div>
           <form autocomplete="on" novalidate @submit.prevent="submitLogin">
             <label for="account">账号</label>
-            <input id="account" v-model="account" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="学号、手机号、工号或管理员账号" maxlength="64" />
+            <input id="account" v-model="account" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" :placeholder="demoAuthEnabled ? '学号、工号或管理员账号' : '学号、手机号、工号或管理员账号'" maxlength="64" />
             <label for="password">密码</label>
-            <input id="password" v-model="password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" maxlength="256" />
+            <input id="password" v-model="password" name="password" type="password" autocomplete="current-password" :inputmode="demoAuthEnabled ? 'numeric' : undefined" :placeholder="demoAuthEnabled ? '任意数字，例如 123456' : '请输入密码'" maxlength="256" />
             <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
             <button class="primary-button" type="submit" :disabled="submitting">{{ submitting ? '正在验证…' : '登录' }}</button>
           </form>
-          <p v-if="demoAuthEnabled" class="auth-note">可直接登录；输入 admin 或 t0001 可体验对应角色，其他内容进入学生工作台。</p>
+          <p v-if="demoAuthEnabled" class="auth-note">演示账号：学生 {{ demoAccounts?.student }} · 教师 {{ demoAccounts?.teacher }} · 管理员 {{ demoAccounts?.admin }}。已导入的学生也可使用学号登录。</p>
           <p v-else class="auth-note">学生账号不会因多次输错密码而锁定；系统仍会阻止异常批量尝试。</p>
         </template>
 

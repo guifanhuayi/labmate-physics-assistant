@@ -14,7 +14,7 @@ LabMate 正在从静态交互原型升级为 Vue、FastAPI 和 PostgreSQL 驱动
 
 前置条件：Docker Desktop 已安装并正在运行。
 
-1. 将 `.env.example` 复制为 `.env`，设置数据库、教师和管理员的本地开发密码。学生没有统一初始密码；真实鉴权模式下首次使用姓名、学号、短信验证码自行设置密码并绑定手机号。
+1. 将 `.env.example` 复制为 `.env`，设置本地数据库密码。演示模式无需设置师生账号密码。真实鉴权模式请使用独立数据库，并设置教师和管理员的种子密码；学生首次使用姓名、学号、短信验证码自行设置密码并绑定手机号。
 2. 启动完整环境：
 
    ```powershell
@@ -27,12 +27,12 @@ LabMate 正在从静态交互原型升级为 Vue、FastAPI 和 PostgreSQL 驱动
    docker compose exec api python -m app.seed
    ```
 
-4. 打开 <http://localhost:5173>。本地 Compose 默认开启演示登录，账号和密码可填写任意内容，也可以全部留空：
-   - 学生：`20260001`（演示模式直接进入；真实模式需先完成首次设置）
+4. 打开 <http://localhost:5173>。本地 Compose 默认开启演示登录：使用以下账号，密码填写任意数字，无需正式设置密码。
+   - 学生：`20260001`（或已导入学生的学号）
    - 教师：`t0001`
    - 管理员：`admin`
 
-   输入 `admin` 或 `t0001` 可体验对应角色，其他账号统一进入学生工作台。设置 `DEMO_AUTH_ENABLED=false` 后使用真实鉴权：测试学生以“测试学生 / 20260001”进入首次设置。本地联调时还需显式设置 `SMS_DELIVERY_MODE=test` 和六位 `SMS_VERIFICATION_TEST_CODE`；该测试模式不得用于生产环境。
+   演示模式根据已有账号进入对应角色工作台，不显示学生首次设置入口。设置 `DEMO_AUTH_ENABLED=false` 后使用真实鉴权：测试学生以“测试学生 / 20260001”进入首次设置。本地联调时还需显式设置 `SMS_DELIVERY_MODE=test` 和六位 `SMS_VERIFICATION_TEST_CODE`；该测试模式不得用于生产环境。
 
 停止环境：
 
@@ -47,7 +47,7 @@ cd backend
 .\.venv\Scripts\python.exe preview_server.py
 ```
 
-随后打开 <http://127.0.0.1:8010/>。
+随后打开 <http://127.0.0.1:8010/>。启动器会创建缺失的演示账号；遇到旧版预览数据库时会先备份再迁移，保留已有名单和班级。
 
 ## 验证
 
