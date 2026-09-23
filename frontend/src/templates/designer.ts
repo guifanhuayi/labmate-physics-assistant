@@ -2,10 +2,13 @@ export interface TemplateField {
   key: string
   label: string
   symbol: string
-  type: 'number' | 'integer' | 'text'
+  type: 'number' | 'integer' | 'text' | 'enum' | 'time' | 'image'
   unit: string
   precision: number
   required: boolean
+  scope: 'individual' | 'group'
+  options?: string[]
+  description?: string
   min?: number
   max?: number
 }
@@ -35,6 +38,8 @@ export interface SpreadsheetGrid {
   rows: number
   columns: number
   cells: SpreadsheetCell[]
+  columnWidths: number[]
+  frozenRows: number
 }
 
 export interface CellRange {
@@ -57,6 +62,7 @@ export interface TemplateCalculation {
   function: 'MEAN' | 'STD' | 'ABS' | 'SQRT' | 'POW' | 'LINEAR_SLOPE' | 'LINEAR_INTERCEPT' | 'R_SQUARED'
   args: string[]
   unit: string
+  symbol?: string
   parameters?: number[]
 }
 
@@ -90,7 +96,19 @@ const numberField = (
   precision: number,
   min?: number,
   max?: number,
-): TemplateField => ({ key, label, symbol, type: 'number', unit, precision, required: true, min, max })
+): TemplateField => ({ key, label, symbol, type: 'number', unit, precision, required: true, scope: 'individual', min, max })
+
+export const PHYSICS_SYMBOLS = ['Δ', 'Ω', 'θ', 'λ', 'μ', 'π', 'α', 'β', 'γ', 'ρ', 'ω', 'φ', '₀', '₁', '₂', '₃', '²', '³', '√'] as const
+
+const symbolReplacements: Array<[RegExp, string]> = [
+  [/\\?Delta\s*/gi, 'Δ'], [/\\?Omega/gi, 'Ω'], [/\\?theta/gi, 'θ'], [/\\?lambda/gi, 'λ'],
+  [/\\?mu/gi, 'μ'], [/\\?alpha/gi, 'α'], [/\\?beta/gi, 'β'], [/\\?gamma/gi, 'γ'],
+  [/_0/g, '₀'], [/_1/g, '₁'], [/_2/g, '₂'], [/_3/g, '₃'], [/\^2/g, '²'], [/\^3/g, '³'],
+]
+
+export function applySymbolShortcut(value: string) {
+  return symbolReplacements.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), value).replace(/\s+/g, '')
+}
 
 const cellId = (row: number, column: number) => `r${row + 1}c${column + 1}`
 
@@ -111,6 +129,8 @@ export function createSpreadsheetGrid(fields: TemplateField[], dataRows: number)
   return {
     rows,
     columns,
+    columnWidths: Array.from({ length: columns }, () => 140),
+    frozenRows: 1,
     cells: Array.from({ length: rows }, (_, row) =>
       Array.from({ length: columns }, (_, column) => defaultCell(row, column, fields)),
     ).flat(),
@@ -131,6 +151,12 @@ export function normalizeSpreadsheetGrid(raw: SpreadsheetGrid | undefined, field
   }
   const rows = Math.max(2, Math.min(201, raw.rows))
   const columns = Math.max(1, Math.min(30, raw.columns))
+  const sourceWidths = Array.isArray(raw.columnWidths) ? raw.columnWidths : []
+  const columnWidths = Array.from({ length: columns }, (_, column) => {
+    const width = Number(sourceWidths[column] ?? 140)
+    return Math.max(80, Math.min(320, Number.isFinite(width) ? Math.round(width) : 140))
+  })
+  const frozenRows = Math.max(0, Math.min(rows, Number.isInteger(raw.frozenRows) ? raw.frozenRows : 1))
   const cells = raw.cells
     .filter((cell) => cell.row >= 0 && cell.column >= 0 && cell.row < rows && cell.column < columns)
     .map((cell) => ({
@@ -138,7 +164,7 @@ export function normalizeSpreadsheetGrid(raw: SpreadsheetGrid | undefined, field
       rowSpan: Math.max(1, Math.min(cell.rowSpan || 1, rows - cell.row)),
       colSpan: Math.max(1, Math.min(cell.colSpan || 1, columns - cell.column)),
     }))
-  const grid: SpreadsheetGrid = { rows, columns, cells: [] }
+  const grid: SpreadsheetGrid = { rows, columns, columnWidths, frozenRows, cells: [] }
   for (const cell of cells.sort((a, b) => a.row - b.row || a.column - b.column)) {
     const overlaps = grid.cells.some((existing) => {
       for (let row = cell.row; row < cell.row + cell.rowSpan; row += 1) {
@@ -204,6 +230,7 @@ export function splitSpreadsheetCell(grid: SpreadsheetGrid, row: number, column:
 }
 
 export function ensureTableGrid(table: TemplateTable) {
+  table.fields = table.fields.map((field) => ({ ...field, scope: field.scope || 'individual', options: field.options || [] }))
   table.grid = normalizeSpreadsheetGrid(table.grid, table.fields, table.minimumRows)
   return table
 }

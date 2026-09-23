@@ -8,6 +8,8 @@ const student = {
   name: '测试学生',
   role: 'student',
   mustChangePassword: false,
+  enrollmentCompleted: true,
+  phoneMasked: '138****0001',
 }
 
 describe('auth store through the HTTP interface', () => {

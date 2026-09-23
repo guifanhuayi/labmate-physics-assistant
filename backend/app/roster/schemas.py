@@ -33,6 +33,7 @@ class StudentView(BaseModel):
     name: str
     student_number: str = Field(alias="studentNumber")
     joined_at: datetime = Field(alias="joinedAt")
+    enrollment_completed: bool = Field(alias="enrollmentCompleted")
 
 
 class ImportErrorView(BaseModel):
@@ -51,14 +52,9 @@ class ImportPreviewView(BaseModel):
     errors: list[ImportErrorView]
 
 
-class InitialCredential(BaseModel):
-    account: str
-    initial_password: str = Field(alias="initialPassword")
-
-
 class ImportResultView(BaseModel):
     id: UUID
     created: int
     existing: int
     memberships_added: int = Field(alias="membershipsAdded")
-    initial_credentials: list[InitialCredential] = Field(alias="initialCredentials")
+    requires_enrollment: int = Field(alias="requiresEnrollment")

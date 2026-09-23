@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 import os
+import secrets
 
 from sqlalchemy import select
 
@@ -16,7 +17,7 @@ SEEDS = (
 
 
 def main() -> None:
-    missing = [password_key for *_, password_key in SEEDS if not os.getenv(password_key)]
+    missing = [password_key for role, *_, password_key in SEEDS if role != "student" and not os.getenv(password_key)]
     if missing:
         raise SystemExit("缺少种子密码环境变量：" + ", ".join(missing))
 
@@ -26,19 +27,22 @@ def main() -> None:
             if db.scalar(select(User).where(User.account == account)):
                 print(f"保留已有账号：{account}")
                 continue
+            password = os.getenv(password_key) if role != "student" else secrets.token_urlsafe(48)
             user = User(
                 account=account,
-                password_hash=auth_service.hash_password(os.environ[password_key]),
+                password_hash=auth_service.hash_password(password or secrets.token_urlsafe(48)),
                 name=os.getenv(name_key, default_name),
                 student_number=account if role == "student" else None,
                 employee_number=account if role == "teacher" else None,
                 role=role,
                 status="active",
                 must_change_password=False,
+                enrollment_completed=role != "student",
                 created_at=datetime.now(UTC),
             )
             db.add(user)
-            print(f"创建 {role} 账号：{account}")
+            state = "等待首次设置" if role == "student" else "可登录"
+            print(f"创建 {role} 账号：{account}（{state}）")
         db.commit()
 
 

@@ -111,6 +111,7 @@ def list_class_students(class_id: UUID, db: Db, current: Current) -> list[Studen
             name=user.name,
             studentNumber=user.student_number or user.account,
             joinedAt=joined_at,
+            enrollmentCompleted=user.enrollment_completed,
         )
         for user, joined_at in db.execute(statement).all()
     ]

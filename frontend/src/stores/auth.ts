@@ -32,6 +32,14 @@ export const useAuthStore = defineStore('auth', {
       this.status = 'authenticated'
       this.workspace = null
     },
+    async requestStudentVerification(name: string, studentNumber: string, phone: string) {
+      return authApi.requestStudentVerification({ name, studentNumber, phone })
+    },
+    async completeStudentEnrollment(payload: { name: string; studentNumber: string; phone: string; verificationCode: string; password: string }) {
+      this.user = await authApi.completeStudentEnrollment(payload)
+      this.status = 'authenticated'
+      this.workspace = null
+    },
     async changePassword(currentPassword: string, newPassword: string) {
       this.user = await authApi.changeInitialPassword(currentPassword, newPassword)
       this.status = 'authenticated'

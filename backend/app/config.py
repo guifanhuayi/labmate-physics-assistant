@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     )
     login_attempt_limit: int = 5
     login_lock_minutes: int = 15
+    sms_delivery_mode: str = "disabled"
+    sms_verification_test_code: str | None = None
+    sms_verification_expiry_seconds: int = 600
+    sms_verification_resend_seconds: int = 60
 
 
 @lru_cache

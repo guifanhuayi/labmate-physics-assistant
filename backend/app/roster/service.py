@@ -2,7 +2,6 @@ from csv import DictReader
 from datetime import UTC, datetime
 from io import BytesIO, StringIO
 import secrets
-import string
 from typing import Any
 
 from openpyxl import load_workbook
@@ -17,15 +16,8 @@ from app.db.models import ClassMember, LabClass, RosterImport, User
 HEADER_ALIASES = {
     "学号": "student_number",
     "姓名": "name",
-    "班级代码": "class_code",
-    "班级名称": "class_name",
-    "班级": "class_label",
-    "学期": "semester",
     "student_number": "student_number",
     "name": "name",
-    "class_code": "class_code",
-    "class_name": "class_name",
-    "semester": "semester",
 }
 REQUIRED_FIELDS = ("student_number", "name")
 
@@ -65,10 +57,6 @@ class RosterService:
                 normalized[key] = "" if value is None else str(value).strip()
         return normalized
 
-    @staticmethod
-    def _class_key(value: str) -> str:
-        return "".join(value.split()).casefold().removesuffix("班")
-
     def preview(self, db: Session, lab_class: LabClass, actor: User, filename: str, content: bytes) -> RosterImport:
         if len(content) > 5 * 1024 * 1024:
             raise AuthError("file_too_large", "名单文件不能超过 5 MB。", 413)
@@ -88,21 +76,6 @@ class RosterService:
             if student_number in seen:
                 errors.append({"row": index, "field": "student_number", "message": "文件内学号重复。"})
             seen.add(student_number)
-            class_label = row.get("class_label")
-            if class_label and self._class_key(class_label) not in {
-                self._class_key(lab_class.class_code),
-                self._class_key(lab_class.class_name),
-            }:
-                errors.append({"row": index, "field": "class_label", "message": "名单中的班级与所选班级不一致。"})
-            if row.get("class_code") and row["class_code"] != lab_class.class_code:
-                errors.append({"row": index, "field": "class_code", "message": "班级代码与所选班级不一致。"})
-            if row.get("class_name") and row["class_name"] != lab_class.class_name:
-                errors.append({"row": index, "field": "class_name", "message": "班级名称与所选班级不一致。"})
-            if row.get("semester") and row["semester"] != lab_class.semester:
-                errors.append({"row": index, "field": "semester", "message": "学期与所选班级不一致。"})
-            row["class_code"] = lab_class.class_code
-            row["class_name"] = lab_class.class_name
-            row["semester"] = lab_class.semester
             existing = db.scalar(select(User).where(User.student_number == student_number)) if student_number else None
             if existing and existing.name != row.get("name"):
                 errors.append({"row": index, "field": "name", "message": "数据库已有相同学号但姓名不同，需人工确认。"})
@@ -122,18 +95,12 @@ class RosterService:
         db.commit()
         return preview
 
-    @staticmethod
-    def _password() -> str:
-        alphabet = string.ascii_letters + string.digits
-        return "Lm!" + "".join(secrets.choice(alphabet) for _ in range(13))
-
     def commit(self, db: Session, preview: RosterImport) -> dict[str, Any]:
         if preview.status == "committed":
             raise AuthError("already_committed", "该名单已确认导入，不能重复提交。", 409)
         if preview.errors_json:
             raise AuthError("preview_has_errors", "请修正名单错误后重新预览。", 409)
         created = existing_count = memberships_added = 0
-        credentials: list[dict[str, str]] = []
         now = self._now()
         try:
             for row in preview.rows_json:
@@ -142,21 +109,20 @@ class RosterService:
                 if user:
                     existing_count += 1
                 else:
-                    password = self._password()
                     user = User(
                         account=student_number.casefold(),
-                        password_hash=self.auth.hash_password(password),
+                        password_hash=self.auth.hash_password(secrets.token_urlsafe(48)),
                         name=row["name"],
                         student_number=student_number,
                         role="student",
                         status="active",
                         must_change_password=False,
+                        enrollment_completed=False,
                         created_at=now,
                     )
                     db.add(user)
                     db.flush()
                     created += 1
-                    credentials.append({"account": user.account, "initialPassword": password})
                 membership = db.scalar(
                     select(ClassMember).where(ClassMember.class_id == preview.class_id, ClassMember.user_id == user.id)
                 )
@@ -174,5 +140,5 @@ class RosterService:
             "created": created,
             "existing": existing_count,
             "membershipsAdded": memberships_added,
-            "initialCredentials": credentials,
+            "requiresEnrollment": created,
         }

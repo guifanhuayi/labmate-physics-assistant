@@ -25,7 +25,7 @@ def test_teacher_can_create_class_preview_and_commit_csv(client, seed_user, db) 
     created_class = create_class(client, teacher.id)
     assert created_class.status_code == 201
     class_id = created_class.json()["id"]
-    csv_data = "学号,姓名,班级代码,班级名称,学期\n20260002,李明,PHY2401,物理2401,2026秋\n"
+    csv_data = "学号,姓名\n20260002,李明\n"
 
     preview = client.post(
         f"/api/roster-imports/preview?class_id={class_id}",
@@ -38,9 +38,11 @@ def test_teacher_can_create_class_preview_and_commit_csv(client, seed_user, db) 
     assert committed.status_code == 200
     assert committed.json()["created"] == 1
     assert committed.json()["membershipsAdded"] == 1
-    assert len(committed.json()["initialCredentials"]) == 1
+    assert committed.json()["requiresEnrollment"] == 1
     db.expire_all()
-    assert db.scalar(select(User).where(User.student_number == "20260002")).name == "李明"
+    imported = db.scalar(select(User).where(User.student_number == "20260002"))
+    assert imported.name == "李明"
+    assert imported.enrollment_completed is False
     assert db.scalar(select(func.count(ClassMember.id))) == 1
 
 
@@ -51,8 +53,8 @@ def test_roster_preview_accepts_xlsx_and_blocks_errors(client, seed_user, db) ->
     class_id = create_class(client, teacher.id).json()["id"]
     workbook = Workbook()
     sheet = workbook.active
-    sheet.append(["学号", "姓名", "班级代码", "班级名称", "学期"])
-    sheet.append(["20260003", "冲突姓名", "PHY2401", "物理2401", "2026秋"])
+    sheet.append(["学号", "姓名"])
+    sheet.append(["20260003", "冲突姓名"])
     binary = BytesIO()
     workbook.save(binary)
 
@@ -70,7 +72,7 @@ def test_roster_preview_accepts_xlsx_and_blocks_errors(client, seed_user, db) ->
     assert db.scalar(select(func.count(ClassMember.id))) == 0
 
 
-def test_compact_roster_uses_selected_class_context(client, seed_user) -> None:
+def test_legacy_class_columns_are_ignored_and_selected_class_is_authoritative(client, seed_user) -> None:
     seed_user(role="teacher", account="t0001")
     assert login(client).status_code == 200
     lab_class = client.post(
@@ -80,7 +82,7 @@ def test_compact_roster_uses_selected_class_context(client, seed_user) -> None:
     workbook = Workbook()
     sheet = workbook.active
     sheet.append(["姓名", "学号", "班级"])
-    sheet.append(["测试学生", "20252201001", "能化2502"])
+    sheet.append(["测试学生", "20252201001", "完全不同的班级"])
     binary = BytesIO()
     workbook.save(binary)
 
@@ -98,7 +100,7 @@ def test_roster_commit_is_not_repeatable(client, seed_user) -> None:
     teacher = seed_user(role="teacher", account="t0001")
     assert login(client).status_code == 200
     class_id = create_class(client, teacher.id).json()["id"]
-    csv_data = "学号,姓名,班级代码,班级名称,学期\n20260004,王芳,PHY2401,物理2401,2026秋\n"
+    csv_data = "学号,姓名\n20260004,王芳\n"
     preview = client.post(
         f"/api/roster-imports/preview?class_id={class_id}",
         files={"file": ("roster.csv", csv_data.encode("utf-8-sig"), "text/csv")},

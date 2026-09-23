@@ -20,7 +20,8 @@ ALLOWED_FUNCTIONS = {
     "LINEAR_INTERCEPT",
     "R_SQUARED",
 }
-ALLOWED_FIELD_TYPES = {"number", "integer", "text"}
+ALLOWED_FIELD_TYPES = {"number", "integer", "text", "enum", "time", "image"}
+ALLOWED_FIELD_SCOPES = {"individual", "group"}
 ALLOWED_CHARTS = {"scatter", "line"}
 ALLOWED_ARTIFACTS = {"data_image", "charts", "excel", "conclusion"}
 
@@ -93,11 +94,17 @@ class TemplateService:
                 fields[key] = field
                 table_field_keys.add(key)
                 if field.get("type") not in ALLOWED_FIELD_TYPES:
-                    issues.append({"path": f"{field_path}.type", "message": "字段类型仅支持数值、整数或文本。"})
+                    issues.append({"path": f"{field_path}.type", "message": "字段类型不受支持。"})
                 if not field.get("label"):
                     issues.append({"path": f"{field_path}.label", "message": "字段名称不能为空。"})
+                if field.get("scope", "individual") not in ALLOWED_FIELD_SCOPES:
+                    issues.append({"path": f"{field_path}.scope", "message": "字段归属仅支持个人或同组共享。"})
                 if field.get("type") in {"number", "integer"} and not field.get("unit"):
                     issues.append({"path": f"{field_path}.unit", "message": "数值字段的单位不能为空。"})
+                if field.get("type") == "enum":
+                    options = field.get("options")
+                    if not isinstance(options, list) or not options or any(not str(option).strip() for option in options):
+                        issues.append({"path": f"{field_path}.options", "message": "枚举字段至少需要一个非空选项。"})
                 precision = field.get("precision", 0)
                 if not isinstance(precision, int) or precision < 0 or precision > 8:
                     issues.append({"path": f"{field_path}.precision", "message": "小数位数必须是 0 到 8 的整数。"})
@@ -110,10 +117,23 @@ class TemplateService:
                 rows = grid.get("rows") if isinstance(grid, dict) else None
                 columns = grid.get("columns") if isinstance(grid, dict) else None
                 cells = grid.get("cells") if isinstance(grid, dict) else None
+                column_widths = grid.get("columnWidths") if isinstance(grid, dict) else None
+                frozen_rows = grid.get("frozenRows") if isinstance(grid, dict) else None
                 if not isinstance(rows, int) or rows < 2 or rows > 201:
                     issues.append({"path": f"{grid_path}.rows", "message": "表格总行数必须为 2 到 201。"})
                 if not isinstance(columns, int) or columns < 1 or columns > 30:
                     issues.append({"path": f"{grid_path}.columns", "message": "表格总列数必须为 1 到 30。"})
+                if column_widths is not None and (
+                    not isinstance(column_widths, list)
+                    or not isinstance(columns, int)
+                    or len(column_widths) != columns
+                    or any(not isinstance(width, int) or width < 80 or width > 320 for width in column_widths)
+                ):
+                    issues.append({"path": f"{grid_path}.columnWidths", "message": "每列必须设置 80 到 320 像素的列宽。"})
+                if frozen_rows is not None and (
+                    not isinstance(frozen_rows, int) or not isinstance(rows, int) or frozen_rows < 0 or frozen_rows > rows
+                ):
+                    issues.append({"path": f"{grid_path}.frozenRows", "message": "冻结行数必须处于表格范围内。"})
                 if not isinstance(cells, list):
                     issues.append({"path": f"{grid_path}.cells", "message": "表格单元格格式不正确。"})
                 elif isinstance(rows, int) and 2 <= rows <= 201 and isinstance(columns, int) and 1 <= columns <= 30:
@@ -169,8 +189,8 @@ class TemplateService:
                 issues.append({"path": f"{path}.function", "message": "计算函数不在白名单中。"})
             if not isinstance(args, list) or not args or any(arg not in known_values for arg in args):
                 issues.append({"path": f"{path}.args", "message": "计算参数必须引用已定义字段或前序计算。"})
-            elif any(arg in fields and fields[arg].get("type") == "text" for arg in args):
-                issues.append({"path": f"{path}.args", "message": "文本字段不能参与数值计算。"})
+            elif any(arg in fields and fields[arg].get("type") not in {"number", "integer"} for arg in args):
+                issues.append({"path": f"{path}.args", "message": "只有数值或整数字段可以参与计算。"})
             if function == "POW":
                 parameters = calculation.get("parameters")
                 if not isinstance(parameters, list) or len(parameters) != 1 or not isinstance(parameters[0], (int, float)):

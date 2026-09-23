@@ -8,12 +8,15 @@ import {
   splitSpreadsheetCell,
   type CellRange,
   type SpreadsheetCell,
+  type SpreadsheetGrid,
   type TemplateTable,
 } from '../templates/designer'
 
 const table = defineModel<TemplateTable>({ required: true })
 const selection = ref<CellRange | null>(null)
 const localError = ref('')
+const undoStack = ref<SpreadsheetGrid[]>([])
+const redoStack = ref<SpreadsheetGrid[]>([])
 
 const grid = computed(() => {
   if (!table.value.grid) table.value.grid = createSpreadsheetGrid(table.value.fields, table.value.minimumRows)
@@ -30,6 +33,30 @@ const selectionLabel = computed(() => {
   const end = `R${selection.value.endRow + 1}C${selection.value.endColumn + 1}`
   return start === end ? start : `${start}:${end}`
 })
+
+const selectedColumnWidth = computed(() => selectedCell.value ? grid.value.columnWidths[selectedCell.value.column] : 140)
+
+function rememberGrid() {
+  undoStack.value.push(structuredClone(grid.value))
+  if (undoStack.value.length > 30) undoStack.value.shift()
+  redoStack.value = []
+}
+
+function undo() {
+  const previous = undoStack.value.pop()
+  if (!previous) return
+  redoStack.value.push(structuredClone(grid.value))
+  table.value.grid = previous
+  selection.value = null
+}
+
+function redo() {
+  const next = redoStack.value.pop()
+  if (!next) return
+  undoStack.value.push(structuredClone(grid.value))
+  table.value.grid = next
+  selection.value = null
+}
 
 function cellsForRow(row: number) {
   return grid.value.cells.filter((cell) => cell.row === row).sort((a, b) => a.column - b.column)
@@ -60,6 +87,7 @@ function selectCell(cell: SpreadsheetCell) {
 function mergeSelection() {
   if (!selection.value) return
   try {
+    rememberGrid()
     table.value.grid = mergeSpreadsheetCells(grid.value, selection.value)
     const startRow = Math.min(selection.value.startRow, selection.value.endRow)
     const startColumn = Math.min(selection.value.startColumn, selection.value.endColumn)
@@ -72,6 +100,7 @@ function mergeSelection() {
 
 function splitSelection() {
   if (!selection.value) return
+  rememberGrid()
   table.value.grid = splitSpreadsheetCell(grid.value, selection.value.startRow, selection.value.startColumn, table.value.fields)
   selection.value = { ...selection.value, endRow: selection.value.startRow, endColumn: selection.value.startColumn }
   localError.value = ''
@@ -80,6 +109,7 @@ function splitSelection() {
 function resize(rows: number, columns: number) {
   const nextRows = Math.max(2, Math.min(201, rows))
   const nextColumns = Math.max(1, Math.min(30, columns))
+  rememberGrid()
   table.value.grid = resizeSpreadsheetGrid(grid.value, nextRows, nextColumns, table.value.fields)
   const dataRows = nextRows - 1
   table.value.minimumRows = dataRows
@@ -89,11 +119,15 @@ function resize(rows: number, columns: number) {
 }
 
 function updateSelectedText(value: string) {
-  if (selectedCell.value) selectedCell.value.text = value
+  if (selectedCell.value && selectedCell.value.text !== value) {
+    rememberGrid()
+    selectedCell.value.text = value
+  }
 }
 
 function updateSelectedKind(value: 'label' | 'field') {
   if (!selectedCell.value) return
+  rememberGrid()
   selectedCell.value.kind = value
   if (value === 'field') {
     selectedCell.value.fieldKey = selectedCell.value.fieldKey || table.value.fields[0]?.key
@@ -104,7 +138,21 @@ function updateSelectedKind(value: 'label' | 'field') {
 }
 
 function updateSelectedField(value: string) {
-  if (selectedCell.value) selectedCell.value.fieldKey = value
+  if (selectedCell.value && selectedCell.value.fieldKey !== value) {
+    rememberGrid()
+    selectedCell.value.fieldKey = value
+  }
+}
+
+function updateColumnWidth(value: number) {
+  if (!selectedCell.value) return
+  rememberGrid()
+  grid.value.columnWidths[selectedCell.value.column] = Math.max(80, Math.min(320, value))
+}
+
+function updateFrozenRows(value: number) {
+  rememberGrid()
+  grid.value.frozenRows = Math.max(0, Math.min(grid.value.rows, value))
 }
 
 function cellText(cell: SpreadsheetCell) {
@@ -122,6 +170,8 @@ function cellText(cell: SpreadsheetCell) {
         <label>总列数<input :value="grid.columns" type="number" min="1" max="30" @change="resize(grid.rows, Number(($event.target as HTMLInputElement).value))" /></label>
       </div>
       <div class="sheet-actions">
+        <button type="button" :disabled="!undoStack.length" @click="undo">撤销</button>
+        <button type="button" :disabled="!redoStack.length" @click="redo">重做</button>
         <button type="button" @click="resize(grid.rows + 1, grid.columns)">＋ 行</button>
         <button type="button" :disabled="grid.rows <= 2" @click="resize(grid.rows - 1, grid.columns)">－ 行</button>
         <button type="button" @click="resize(grid.rows, grid.columns + 1)">＋ 列</button>
@@ -130,12 +180,17 @@ function cellText(cell: SpreadsheetCell) {
         <button type="button" :disabled="!selectedCell || (selectedCell.rowSpan === 1 && selectedCell.colSpan === 1)" @click="splitSelection">拆分单元格</button>
       </div>
     </div>
+    <div class="sheet-layout-controls">
+      <label>冻结顶部行数<input :value="grid.frozenRows" type="number" min="0" :max="grid.rows" @change="updateFrozenRows(Number(($event.target as HTMLInputElement).value))" /></label>
+      <label>所选列宽<input :value="selectedColumnWidth" type="range" min="80" max="320" step="10" :disabled="!selectedCell" @change="updateColumnWidth(Number(($event.target as HTMLInputElement).value))" /></label>
+    </div>
     <p class="sheet-help">第一次点击选择起点，第二次点击确定矩形终点；数据输入格不能合并。</p>
     <p v-if="localError" class="sheet-error">{{ localError }}</p>
     <div class="sheet-canvas">
       <table>
+        <colgroup><col class="row-number-column" /><col v-for="(width, column) in grid.columnWidths" :key="column" :style="{ width: `${width}px` }" /></colgroup>
         <tbody>
-          <tr v-for="row in grid.rows" :key="row">
+          <tr v-for="row in grid.rows" :key="row" :class="{ 'frozen-sheet-row': row <= grid.frozenRows }" :style="{ '--freeze-top': `${(row - 1) * 44}px` }">
             <th class="row-number">{{ row }}</th>
             <td
               v-for="cell in cellsForRow(row - 1)"

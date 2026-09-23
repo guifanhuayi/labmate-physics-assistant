@@ -5,7 +5,16 @@ from sqlalchemy.orm import Session
 
 from app.auth.authorization import Action, Authorizer, Principal, Role
 from app.auth.errors import AuthError
-from app.auth.schemas import ChangePasswordRequest, LoginRequest, RoleName, UserView, WorkspaceView
+from app.auth.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RoleName,
+    StudentEnrollmentRequest,
+    StudentVerificationRequest,
+    UserView,
+    VerificationRequested,
+    WorkspaceView,
+)
 from app.auth.service import AuthService, CurrentSession
 from app.config import Settings, get_settings
 from app.db.session import get_db
@@ -39,6 +48,42 @@ def read_current_session(
 @router.post("/auth/login", response_model=UserView)
 def login(payload: LoginRequest, request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> UserView:
     result = auth_service.authenticate(db, payload.account, payload.password, request.client.host if request.client else None)
+    set_session_cookie(response, result.token, settings)
+    return UserView.model_validate(result.user)
+
+
+@router.post("/auth/student-enrollment/sms", response_model=VerificationRequested, status_code=202)
+def request_student_verification(
+    payload: StudentVerificationRequest,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> VerificationRequested:
+    expires_in = auth_service.request_student_verification(
+        db,
+        name=payload.name,
+        student_number=payload.student_number,
+        phone=payload.phone,
+        client_ip=request.client.host if request.client else None,
+    )
+    return VerificationRequested(expiresInSeconds=expires_in)
+
+
+@router.post("/auth/student-enrollment/complete", response_model=UserView)
+def complete_student_enrollment(
+    payload: StudentEnrollmentRequest,
+    request: Request,
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+) -> UserView:
+    result = auth_service.complete_student_enrollment(
+        db,
+        name=payload.name,
+        student_number=payload.student_number,
+        phone=payload.phone,
+        verification_code=payload.verification_code,
+        password=payload.password,
+        client_ip=request.client.host if request.client else None,
+    )
     set_session_cookie(response, result.token, settings)
     return UserView.model_validate(result.user)
 

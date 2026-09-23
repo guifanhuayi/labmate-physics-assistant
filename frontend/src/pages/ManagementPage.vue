@@ -24,7 +24,6 @@ const classForm = reactive({ classCode: 'PHY2401', className: '物理2401', seme
 const rosterClassId = ref('')
 const rosterFile = ref<File | null>(null)
 const rosterPreview = ref<ImportPreview | null>(null)
-const initialCredentials = ref<{ account: string; initialPassword: string }[]>([])
 const assignment = reactive({ templateVersionId: '', classId: '', title: '实验一：伏安法测电阻', startAt: '', dueAt: '' })
 
 function showError(value: unknown) {
@@ -126,8 +125,7 @@ async function commitRoster() {
   busy.value = true; error.value = ''; message.value = ''
   try {
     const result = await managementApi.commitRoster(rosterPreview.value.id)
-    initialCredentials.value = result.initialCredentials
-    message.value = `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条。初始凭据仅在本次响应中返回。`
+    message.value = `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条；${result.requiresEnrollment} 名学生需用姓名和学号完成首次设置。`
     rosterPreview.value = null
     await loadData()
     if (rosterClassId.value) await loadClassStudents(rosterClassId.value)
@@ -196,15 +194,12 @@ onMounted(loadData)
           <label>目标班级</label>
           <select v-model="rosterClassId"><option value="">请选择</option><option v-for="item in classes" :key="item.id" :value="item.id">{{ item.classCode }} · {{ item.className }}</option></select>
           <label>Excel / CSV 名单</label><input type="file" accept=".xlsx,.csv" @change="pickFile" />
+          <p class="field-help">名单只需要“学号、姓名”两列；班级由上方选择决定。旧文件中的班级列会被忽略。</p>
           <button class="secondary-button" :disabled="busy" @click="previewRoster">先预览</button>
           <div v-if="rosterPreview" class="preview-box">
             <strong>有效 {{ rosterPreview.validCount }} 行 · 错误 {{ rosterPreview.errorCount }} 项</strong>
             <ul v-if="rosterPreview.errors.length"><li v-for="issue in rosterPreview.errors" :key="`${issue.row}-${issue.field}`">第 {{ issue.row }} 行：{{ issue.message }}</li></ul>
             <button v-else class="primary-button" :disabled="busy" @click="commitRoster">确认导入</button>
-          </div>
-          <div v-if="initialCredentials.length" class="credential-box">
-            <strong>一次性初始凭据</strong><p>请立即通过安全渠道交给对应学生；刷新后不再显示。</p>
-            <code v-for="item in initialCredentials" :key="item.account">{{ item.account }}　{{ item.initialPassword }}</code>
           </div>
         </div>
         <div class="work-panel panel-wide">
@@ -223,8 +218,8 @@ onMounted(loadData)
                 <p v-else-if="!classStudents.length">该班级暂时没有学生。</p>
                 <div v-else class="table-scroll">
                   <table>
-                    <thead><tr><th>序号</th><th>姓名</th><th>学号</th><th>登录账号</th></tr></thead>
-                    <tbody><tr v-for="(student, index) in classStudents" :key="student.id"><td>{{ index + 1 }}</td><td>{{ student.name }}</td><td>{{ student.studentNumber }}</td><td>{{ student.account }}</td></tr></tbody>
+                    <thead><tr><th>序号</th><th>姓名</th><th>学号</th><th>首次设置</th></tr></thead>
+                    <tbody><tr v-for="(student, index) in classStudents" :key="student.id"><td>{{ index + 1 }}</td><td>{{ student.name }}</td><td>{{ student.studentNumber }}</td><td>{{ student.enrollmentCompleted ? '已完成' : '待完成' }}</td></tr></tbody>
                   </table>
                 </div>
               </div>

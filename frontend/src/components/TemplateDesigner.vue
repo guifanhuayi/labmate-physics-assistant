@@ -3,9 +3,11 @@ import { computed, ref } from 'vue'
 import { ApiError, managementApi, type TemplateView } from '../api/client'
 import SpreadsheetTableEditor from './SpreadsheetTableEditor.vue'
 import {
+  applySymbolShortcut,
   createBlankTemplate,
   createMechanicsTemplate,
   normalizeTemplateSchema,
+  PHYSICS_SYMBOLS,
   resizeSpreadsheetGrid,
   schemaValueOptions,
   type TemplateCalculation,
@@ -32,6 +34,7 @@ const artifactOptions = [
   { value: 'conclusion', label: '实验结论' },
 ]
 const calculationFunctions = ['MEAN', 'STD', 'ABS', 'SQRT', 'POW', 'LINEAR_SLOPE', 'LINEAR_INTERCEPT', 'R_SQUARED'] as const
+const physicsSymbols = PHYSICS_SYMBOLS
 
 function reportError(value: unknown) {
   error.value = value instanceof ApiError ? value.message : value instanceof Error ? value.message : '操作失败，请稍后再试。'
@@ -75,13 +78,13 @@ function addTable() {
     description: '',
     minimumRows: 1,
     maximumRows: 10,
-    fields: [{ key: `value_${index}_1`, label: '测量值', symbol: 'x', type: 'number', unit: '1', precision: 2, required: true }],
+    fields: [{ key: `value_${index}_1`, label: '测量值', symbol: 'x', type: 'number', unit: '1', precision: 2, required: true, scope: 'individual' }],
   })
 }
 
 function addField(table: TemplateTable) {
   const index = table.fields.length + 1
-  table.fields.push({ key: `${table.id}_field_${index}`, label: `字段 ${index}`, symbol: '', type: 'number', unit: '1', precision: 2, required: true })
+  table.fields.push({ key: `${table.id}_field_${index}`, label: `字段 ${index}`, symbol: '', type: 'number', unit: '1', precision: 2, required: true, scope: 'individual' })
   if (table.grid && table.grid.columns < table.fields.length) {
     table.grid = resizeSpreadsheetGrid(table.grid, table.grid.rows, table.fields.length, table.fields)
   }
@@ -105,6 +108,29 @@ function syncGridBindings(table: TemplateTable) {
 function removeField(table: TemplateTable, fieldIndex: number) {
   table.fields.splice(fieldIndex, 1)
   syncGridBindings(table)
+}
+
+function appendFieldSymbol(field: TemplateField, symbol: string) {
+  field.symbol = `${field.symbol || ''}${symbol}`
+}
+
+function normalizeFieldSymbol(field: TemplateField) {
+  field.symbol = applySymbolShortcut(field.symbol)
+}
+
+function updateEnumOptions(field: TemplateField, value: string) {
+  field.options = value.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean)
+}
+
+function toggleCalculationArgument(calculation: TemplateCalculation, key: string) {
+  const index = calculation.args.indexOf(key)
+  if (index >= 0) calculation.args.splice(index, 1)
+  else calculation.args.push(key)
+}
+
+function calculationPreview(calculation: TemplateCalculation) {
+  const labels = calculation.args.map((key) => valueOptions.value.find((item) => item.key === key)?.label || key)
+  return `${calculation.symbol || calculation.label} = ${calculation.function}(${labels.join(', ') || '请选择变量'})`
 }
 
 function addCalculation() {
@@ -248,14 +274,22 @@ async function publishDraft() {
           <div v-for="(field, fieldIndex) in table.fields" :key="`${table.id}-${fieldIndex}`" class="field-editor-row">
             <input v-model="field.label" aria-label="字段名称" placeholder="字段名称" />
             <input v-model="field.key" aria-label="字段键" placeholder="field_key" @change="syncGridBindings(table)" />
-            <select v-model="field.type" aria-label="数据类型"><option value="number">数值</option><option value="integer">整数</option><option value="text">文本</option></select>
-            <input v-model="field.symbol" aria-label="符号" placeholder="符号" />
+            <select v-model="field.type" aria-label="数据类型"><option value="number">数值</option><option value="integer">整数</option><option value="text">文本</option><option value="enum">枚举选择</option><option value="time">时间</option><option value="image">图片</option></select>
+            <select v-model="field.scope" aria-label="数据归属"><option value="individual">个人数据</option><option value="group">同组共享</option></select>
+            <input v-model="field.symbol" aria-label="符号" placeholder="如 U₁、Δx" @change="normalizeFieldSymbol(field)" />
             <input v-model="field.unit" aria-label="单位" placeholder="单位" />
             <input v-model.number="field.precision" aria-label="小数位" type="number" min="0" max="8" />
             <input v-model.number="field.min" aria-label="下限" type="number" placeholder="下限" />
             <input v-model.number="field.max" aria-label="上限" type="number" placeholder="上限" />
             <label class="field-required"><input v-model="field.required" type="checkbox" />必填</label>
             <button class="icon-danger" type="button" aria-label="删除字段" @click="removeField(table, fieldIndex)">×</button>
+            <details class="field-symbol-picker">
+              <summary>常用物理符号</summary>
+              <div><button v-for="symbol in physicsSymbols" :key="symbol" type="button" @click="appendFieldSymbol(field, symbol)">{{ symbol }}</button></div>
+              <small>也可输入 Delta、\alpha、_1、^2，离开输入框后自动转换。</small>
+            </details>
+            <label v-if="field.type === 'enum'" class="field-extra">枚举选项（逗号或换行分隔）<textarea :value="field.options?.join('，')" rows="2" @input="updateEnumOptions(field, ($event.target as HTMLTextAreaElement).value)" /></label>
+            <label class="field-extra">学生端提示<input v-model="field.description" placeholder="例如：读数稳定后记录" /></label>
           </div>
           <button class="add-button compact-add" type="button" @click="addField(table)">＋ 添加字段</button>
         </article>
@@ -263,7 +297,7 @@ async function publishDraft() {
       </section>
 
       <section class="designer-section">
-        <div class="section-title"><span>4</span><div><h3>自动计算</h3><p>只选择受控函数和已有字段，不需要编写公式代码。</p></div></div>
+        <div class="section-title"><span>4</span><div><h3>公式与结果字段</h3><p>使用变量令牌和白名单函数组合公式，无需键入字段代码或复杂符号。</p></div></div>
         <article v-for="(calculation, index) in draft.calculations" :key="`${calculation.key}-${index}`" class="editor-card">
           <div class="editor-card-heading"><strong>{{ calculation.label }}</strong><button class="text-danger" type="button" @click="draft.calculations.splice(index, 1)">移除</button></div>
           <div class="four-fields">
@@ -272,8 +306,12 @@ async function publishDraft() {
             <div><label>函数</label><select v-model="calculation.function"><option v-for="fn in calculationFunctions" :key="fn" :value="fn">{{ fn }}</option></select></div>
             <div><label>单位</label><input v-model="calculation.unit" /></div>
           </div>
-          <label>参与计算的字段</label>
-          <select v-model="calculation.args" multiple class="multi-select"><option v-for="option in valueOptions.filter((item) => item.key !== calculation.key)" :key="option.key" :value="option.key">{{ option.label }}</option></select>
+          <label>结果符号</label><input v-model="calculation.symbol" placeholder="如 R、T²" @change="calculation.symbol = applySymbolShortcut(calculation.symbol || '')" />
+          <label>点击插入或移除变量</label>
+          <div class="formula-variable-palette">
+            <button v-for="option in valueOptions.filter((item) => item.key !== calculation.key)" :key="option.key" type="button" :class="{ active: calculation.args.includes(option.key) }" @click="toggleCalculationArgument(calculation, option.key)">{{ option.label }}</button>
+          </div>
+          <div class="formula-preview" aria-live="polite">{{ calculationPreview(calculation) }}</div>
           <div v-if="calculation.function === 'POW'"><label>指数</label><input :value="calculation.parameters?.[0] ?? 2" type="number" @input="calculation.parameters = [Number(($event.target as HTMLInputElement).value)]" /></div>
         </article>
         <button class="add-button" type="button" @click="addCalculation">＋ 添加计算</button>

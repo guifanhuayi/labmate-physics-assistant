@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applySymbolShortcut,
   createMechanicsTemplate,
   createSpreadsheetGrid,
   mergeSpreadsheetCells,
@@ -44,5 +45,15 @@ describe('mechanics experiment template preset', () => {
     expect(merged.cells.find((cell) => cell.row === 0 && cell.column === 0)?.colSpan).toBe(3)
     expect(splitSpreadsheetCell(merged, 0, 0, fields).cells.filter((cell) => cell.row === 0)).toHaveLength(fields.length)
     expect(() => mergeSpreadsheetCells(grid, { startRow: 1, endRow: 1, startColumn: 0, endColumn: 1 })).toThrow('数据输入单元格不能合并')
+  })
+
+  it('stores column widths, frozen rows, field ownership and symbol shortcuts', () => {
+    const schema = createMechanicsTemplate()
+    const grid = createSpreadsheetGrid(schema.tables[0].fields, 3)
+
+    expect(grid.columnWidths).toEqual(schema.tables[0].fields.map(() => 140))
+    expect(grid.frozenRows).toBe(1)
+    expect(schema.tables[0].fields.every((field) => field.scope === 'individual')).toBe(true)
+    expect(applySymbolShortcut('Delta x_1^2')).toBe('Δx₁²')
   })
 })

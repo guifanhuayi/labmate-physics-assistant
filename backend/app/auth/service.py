@@ -5,12 +5,12 @@ import secrets
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.auth.errors import AuthError
 from app.config import Settings
-from app.db.models import AuditLog, AuthSession, User
+from app.db.models import AuditLog, AuthSession, PhoneVerification, User
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,10 @@ class CurrentSession:
 
 def normalize_account(account: str) -> str:
     return account.strip().casefold()
+
+
+def normalize_phone(phone: str) -> str:
+    return "".join(character for character in phone if character.isdigit())
 
 
 def validate_password(password: str) -> None:
@@ -113,6 +117,135 @@ class AuthService:
         db.flush()
         return AuthenticatedSession(user=user, session=session, token=token)
 
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+    def _student_for_enrollment(self, db: Session, name: str, student_number: str) -> User:
+        normalized_number = student_number.strip()
+        user = db.scalar(
+            select(User).where(
+                User.role == "student",
+                User.student_number == normalized_number,
+                User.name == name.strip(),
+                User.status == "active",
+                User.enrollment_completed.is_(False),
+            )
+        )
+        if not user:
+            raise AuthError("enrollment_not_available", "姓名、学号不匹配或账号已完成首次设置。", 404)
+        return user
+
+    def request_student_verification(
+        self,
+        db: Session,
+        *,
+        name: str,
+        student_number: str,
+        phone: str,
+        client_ip: str | None,
+    ) -> int:
+        if self.settings.sms_delivery_mode != "test" or not self.settings.sms_verification_test_code:
+            raise AuthError("sms_unavailable", "短信服务尚未配置，请联系管理员。", 503)
+        user = self._student_for_enrollment(db, name, student_number)
+        normalized_phone = normalize_phone(phone)
+        owner = db.scalar(select(User).where(User.phone_number == normalized_phone))
+        if owner and owner.id != user.id:
+            raise AuthError("enrollment_not_available", "姓名、学号或手机号无法用于首次设置。", 404)
+
+        latest = db.scalar(
+            select(PhoneVerification)
+            .where(PhoneVerification.user_id == user.id)
+            .order_by(PhoneVerification.created_at.desc())
+            .limit(1)
+        )
+        now = self._now()
+        if latest and (now - self._as_utc(latest.created_at)).total_seconds() < self.settings.sms_verification_resend_seconds:
+            raise AuthError("verification_too_frequent", "验证码发送过于频繁，请稍后再试。", 429)
+
+        verification = PhoneVerification(
+            user_id=user.id,
+            phone_number=normalized_phone,
+            code_hash=self.hash_password(self.settings.sms_verification_test_code),
+            failed_attempts=0,
+            created_at=now,
+            expires_at=now + timedelta(seconds=self.settings.sms_verification_expiry_seconds),
+        )
+        db.add(verification)
+        self._audit(
+            db,
+            "auth.student_verification_requested",
+            actor_id=user.id,
+            resource_id=str(user.id),
+            metadata={"ip": client_ip, "phoneLast4": normalized_phone[-4:]},
+        )
+        db.commit()
+        return self.settings.sms_verification_expiry_seconds
+
+    def complete_student_enrollment(
+        self,
+        db: Session,
+        *,
+        name: str,
+        student_number: str,
+        phone: str,
+        verification_code: str,
+        password: str,
+        client_ip: str | None,
+    ) -> AuthenticatedSession:
+        user = self._student_for_enrollment(db, name, student_number)
+        normalized_phone = normalize_phone(phone)
+        verification = db.scalar(
+            select(PhoneVerification)
+            .where(
+                PhoneVerification.user_id == user.id,
+                PhoneVerification.phone_number == normalized_phone,
+                PhoneVerification.used_at.is_(None),
+            )
+            .order_by(PhoneVerification.created_at.desc())
+            .limit(1)
+        )
+        now = self._now()
+        if (
+            not verification
+            or self._as_utc(verification.expires_at) <= now
+            or verification.failed_attempts >= 5
+        ):
+            raise AuthError("invalid_verification_code", "验证码无效或已过期。", 422)
+        if not self._verify(verification.code_hash, verification_code):
+            verification.failed_attempts += 1
+            self._audit(
+                db,
+                "auth.student_verification_failed",
+                actor_id=user.id,
+                resource_id=str(user.id),
+                metadata={"ip": client_ip},
+            )
+            db.commit()
+            raise AuthError("invalid_verification_code", "验证码无效或已过期。", 422)
+
+        validate_password(password)
+        phone_owner = db.scalar(select(User).where(User.phone_number == normalized_phone, User.id != user.id))
+        if phone_owner:
+            raise AuthError("phone_already_bound", "该手机号已绑定其他账号。", 409)
+
+        user.password_hash = self.hash_password(password)
+        user.phone_number = normalized_phone
+        user.phone_verified_at = now
+        user.enrollment_completed = True
+        user.must_change_password = False
+        verification.used_at = now
+        result = self._create_session(db, user)
+        self._audit(
+            db,
+            "auth.student_enrollment_completed",
+            actor_id=user.id,
+            resource_id=str(user.id),
+            metadata={"ip": client_ip, "phoneLast4": normalized_phone[-4:]},
+        )
+        db.commit()
+        return result
+
     def _authenticate_demo(self, db: Session, account: str, client_ip: str | None) -> AuthenticatedSession:
         normalized = normalize_account(account)
         known_accounts = {
@@ -141,13 +274,18 @@ class AuthService:
             return self._authenticate_demo(db, account, client_ip)
 
         normalized = normalize_account(account)
-        if self._recent_failures(db, normalized) >= self.settings.login_attempt_limit:
+        normalized_phone = normalize_phone(account)
+        user = db.scalar(
+            select(User).where(or_(User.account == normalized, User.phone_number == normalized_phone))
+        )
+        if user and user.role != "student" and self._recent_failures(db, normalized) >= self.settings.login_attempt_limit:
             self._audit(db, "auth.login_rate_limited", resource_id=normalized, metadata={"ip": client_ip})
             db.commit()
             raise AuthError("rate_limited", "登录尝试过多，请 15 分钟后再试。", 429)
 
-        user = db.scalar(select(User).where(User.account == normalized))
         password_ok = self._verify(user.password_hash if user else self._dummy_hash, password)
+        if user and user.role == "student" and not user.enrollment_completed:
+            password_ok = False
         if not user or not password_ok:
             self._audit(db, "auth.login_failed", resource_id=normalized, metadata={"ip": client_ip})
             db.commit()

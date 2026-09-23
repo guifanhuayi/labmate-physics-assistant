@@ -235,3 +235,68 @@ def test_teacher_can_list_published_assignments(client, seed_user, db) -> None:
     assert response.json()[0]["classCode"] == "PHY2501"
     assert response.json()[0]["templateName"] == "伏安法测电阻"
     assert response.json()[0]["versionNumber"] == 1
+
+
+def test_template_accepts_shared_fields_extended_input_types_and_grid_layout(client, seed_user) -> None:
+    seed_user(role="teacher", account="t0001")
+    assert login(client).status_code == 200
+    template_id = create_template(client).json()["id"]
+    schema = deepcopy(VALID_SCHEMA)
+    schema["tables"][0]["fields"][0]["scope"] = "group"
+    schema["tables"][0]["fields"].extend(
+        [
+            {"key": "condition", "label": "实验条件", "type": "enum", "options": ["常温", "低温"], "unit": "", "precision": 0, "required": True, "scope": "individual"},
+            {"key": "observed_at", "label": "观测时间", "type": "time", "unit": "", "precision": 0, "required": True, "scope": "individual"},
+            {"key": "evidence", "label": "读数照片", "type": "image", "unit": "", "precision": 0, "required": False, "scope": "individual"},
+        ]
+    )
+    schema["tables"][0]["grid"] = {
+        "rows": 6,
+        "columns": 4,
+        "columnWidths": [140, 180, 160, 220],
+        "frozenRows": 1,
+        "cells": [
+            {"id": f"r{row + 1}c{column + 1}", "row": row, "column": column, "rowSpan": 1, "colSpan": 1, "kind": "label" if row == 0 else "field", "text": "", **({"fieldKey": schema["tables"][0]["fields"][column]["key"]} if row > 0 else {})}
+            for row in range(6)
+            for column in range(4)
+        ],
+    }
+    assert client.put(
+        f"/api/templates/{template_id}/draft",
+        json={"name": "扩展字段模板", "description": "", "schema": schema},
+    ).status_code == 200
+
+    validation = client.post(f"/api/templates/{template_id}/validate")
+
+    assert validation.json() == {"valid": True, "issues": []}
+
+
+def test_template_rejects_invalid_grid_width_and_field_scope(client, seed_user) -> None:
+    seed_user(role="teacher", account="t0001")
+    assert login(client).status_code == 200
+    template_id = create_template(client).json()["id"]
+    schema = deepcopy(VALID_SCHEMA)
+    schema["tables"][0]["fields"][0]["scope"] = "class"
+    schema["tables"][0]["grid"] = {
+        "rows": 6,
+        "columns": 2,
+        "columnWidths": [20],
+        "frozenRows": 7,
+        "cells": [
+            {"id": f"r{row + 1}c{column + 1}", "row": row, "column": column, "rowSpan": 1, "colSpan": 1, "kind": "label" if row == 0 else "field", "text": "", **({"fieldKey": schema["tables"][0]["fields"][column]["key"]} if row > 0 else {})}
+            for row in range(6)
+            for column in range(2)
+        ],
+    }
+    client.put(
+        f"/api/templates/{template_id}/draft",
+        json={"name": "无效布局", "description": "", "schema": schema},
+    )
+
+    validation = client.post(f"/api/templates/{template_id}/validate").json()
+
+    assert validation["valid"] is False
+    paths = {issue["path"] for issue in validation["issues"]}
+    assert "tables[0].fields[0].scope" in paths
+    assert "tables[0].grid.columnWidths" in paths
+    assert "tables[0].grid.frozenRows" in paths

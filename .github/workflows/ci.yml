@@ -25,6 +25,8 @@ jobs:
       DATABASE_URL: postgresql+psycopg://labmate:labmate-ci@localhost:5432/labmate_test
       TEST_DATABASE_URL: postgresql+psycopg://labmate:labmate-ci@localhost:5432/labmate_test
       COOKIE_SECURE: "false"
+      SMS_DELIVERY_MODE: test
+      SMS_VERIFICATION_TEST_CODE: "246810"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -54,7 +56,6 @@ jobs:
         working-directory: frontend
       - name: Prepare end-to-end accounts
         env:
-          LABMATE_SEED_STUDENT_PASSWORD: InitialPass2026
           LABMATE_SEED_TEACHER_PASSWORD: InitialPass2026
           LABMATE_SEED_ADMIN_PASSWORD: InitialPass2026
         run: |
@@ -70,8 +71,8 @@ jobs:
           curl -fsS http://127.0.0.1:8000/api/health
       - name: End-to-end login flow
         env:
-          E2E_INITIAL_PASSWORD: InitialPass2026
           E2E_NEW_PASSWORD: ChangedPass2026
+          E2E_SMS_CODE: "246810"
         run: |
           pnpm exec playwright install --with-deps chromium
           pnpm e2e

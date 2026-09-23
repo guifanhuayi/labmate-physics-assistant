@@ -21,12 +21,21 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(80))
     student_number: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     employee_number: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
+    phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     role: Mapped[str] = mapped_column(String(16), index=True)
     status: Mapped[str] = mapped_column(String(16), default="active")
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    enrollment_completed: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     sessions: Mapped[list["AuthSession"]] = relationship(back_populates="user")
+
+    @property
+    def phone_masked(self) -> str | None:
+        if not self.phone_number:
+            return None
+        return f"{self.phone_number[:3]}****{self.phone_number[-4:]}"
 
 
 class AuthSession(Base):
@@ -40,6 +49,19 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class PhoneVerification(Base):
+    __tablename__ = "phone_verifications"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    phone_number: Mapped[str] = mapped_column(String(32), index=True)
+    code_hash: Mapped[str] = mapped_column(Text)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AuditLog(Base):

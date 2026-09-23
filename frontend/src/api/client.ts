@@ -6,6 +6,8 @@ export interface UserView {
   name: string
   role: Role
   mustChangePassword: boolean
+  enrollmentCompleted: boolean
+  phoneMasked: string | null
 }
 
 export interface WorkspaceView {
@@ -47,6 +49,14 @@ export const authApi = {
   login: (account: string, password: string) =>
     request<UserView>('/api/auth/login', { method: 'POST', body: JSON.stringify({ account, password }) }),
   me: () => request<UserView>('/api/auth/me'),
+  requestStudentVerification: (payload: { name: string; studentNumber: string; phone: string }) =>
+    request<{ expiresInSeconds: number }>('/api/auth/student-enrollment/sms', {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  completeStudentEnrollment: (payload: { name: string; studentNumber: string; phone: string; verificationCode: string; password: string }) =>
+    request<UserView>('/api/auth/student-enrollment/complete', {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
   changeInitialPassword: (currentPassword: string, newPassword: string) =>
     request<UserView>('/api/auth/change-initial-password', {
       method: 'POST',
@@ -66,7 +76,7 @@ export interface ClassView {
   studentCount: number
 }
 export interface TeacherView { id: string; account: string; name: string }
-export interface StudentView { id: string; account: string; name: string; studentNumber: string; joinedAt: string }
+export interface StudentView { id: string; account: string; name: string; studentNumber: string; joinedAt: string; enrollmentCompleted: boolean }
 
 export interface ImportIssue { row: number; field: string; message: string }
 export interface ImportPreview {
@@ -83,7 +93,7 @@ export interface ImportResult {
   created: number
   existing: number
   membershipsAdded: number
-  initialCredentials: { account: string; initialPassword: string }[]
+  requiresEnrollment: number
 }
 
 export interface TemplateView {
