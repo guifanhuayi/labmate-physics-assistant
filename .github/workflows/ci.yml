@@ -64,6 +64,8 @@ jobs:
           python -m app.seed
         working-directory: backend
       - name: Start application
+        env:
+          DEMO_AUTH_ENABLED: "true"
         run: |
           nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/labmate-api.log 2>&1 &
           nohup pnpm --dir frontend dev --host 127.0.0.1 > /tmp/labmate-web.log 2>&1 &

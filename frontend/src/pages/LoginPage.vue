@@ -36,11 +36,7 @@ function switchMode(next: 'login' | 'enrollment') {
 async function submitLogin() {
   errorMessage.value = ''
   if (!account.value.trim() || !password.value) {
-    errorMessage.value = demoAuthEnabled.value ? '请输入演示账号和任意数字密码。' : '请输入学号、手机号或工号以及密码。'
-    return
-  }
-  if (demoAuthEnabled.value && !/^\d+$/.test(password.value)) {
-    errorMessage.value = '演示密码请填写任意数字。'
+    errorMessage.value = demoAuthEnabled.value ? '请输入账号和任意非空密码。' : '请输入学号、手机号或工号以及密码。'
     return
   }
   submitting.value = true
@@ -111,7 +107,7 @@ async function completeEnrollment() {
       <div class="auth-context">
         <p class="eyebrow">大学物理实验</p>
         <h1>让每一次测量<br />都有可信记录</h1>
-        <p v-if="demoAuthEnabled">输入演示账号和任意数字密码，进入对应角色的工作台。</p>
+        <p v-if="demoAuthEnabled">学生使用已导入名单中的学号登录；演示阶段密码填写任意非空内容。</p>
         <p v-else>登录后进入你的实验工作台。身份、模板版本和关键操作均由服务器验证并留痕。</p>
         <dl v-if="demoAuthEnabled">
           <div><dt>01</dt><dd>学生使用学号登录</dd></div>
@@ -135,18 +131,18 @@ async function completeEnrollment() {
           <div class="card-heading">
             <p>{{ demoAuthEnabled ? '演示模式' : '欢迎回来' }}</p>
             <h2 id="login-title">登录 LabMate</h2>
-            <span v-if="demoAuthEnabled">按账号进入对应工作台，密码填写任意数字。</span>
+            <span v-if="demoAuthEnabled">学生填写已导入的学号，教师和管理员填写各自账号；密码任意填写。</span>
             <span v-else>学生可使用学号或已绑定手机号，教师使用工号登录。</span>
           </div>
           <form autocomplete="on" novalidate @submit.prevent="submitLogin">
             <label for="account">账号</label>
             <input id="account" v-model="account" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" :placeholder="demoAuthEnabled ? '学号、工号或管理员账号' : '学号、手机号、工号或管理员账号'" maxlength="64" />
             <label for="password">密码</label>
-            <input id="password" v-model="password" name="password" type="password" autocomplete="current-password" :inputmode="demoAuthEnabled ? 'numeric' : undefined" :placeholder="demoAuthEnabled ? '任意数字，例如 123456' : '请输入密码'" maxlength="256" />
+            <input id="password" v-model="password" name="password" type="password" autocomplete="current-password" :placeholder="demoAuthEnabled ? '任意非空内容' : '请输入密码'" maxlength="256" />
             <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
             <button class="primary-button" type="submit" :disabled="submitting">{{ submitting ? '正在验证…' : '登录' }}</button>
           </form>
-          <p v-if="demoAuthEnabled" class="auth-note">演示账号：学生 {{ demoAccounts?.student }} · 教师 {{ demoAccounts?.teacher }} · 管理员 {{ demoAccounts?.admin }}。已导入的学生也可使用学号登录。</p>
+          <p v-if="demoAuthEnabled" class="auth-note">演示登录：学生使用教师已导入名单中的学号；教师 {{ demoAccounts?.teacher }} · 管理员 {{ demoAccounts?.admin }}。不存在或未导入的学号不能登录。</p>
           <p v-else class="auth-note">学生账号不会因多次输错密码而锁定；系统仍会阻止异常批量尝试。</p>
         </template>
 

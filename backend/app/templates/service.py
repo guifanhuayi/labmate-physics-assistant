@@ -80,36 +80,36 @@ class TemplateService:
                 issues.append({"path": f"{path}.maximumRows", "message": "最多行数必须不小于最少行数且不超过 200。"})
             table_fields = table.get("fields")
             if not isinstance(table_fields, list) or not table_fields:
-                issues.append({"path": f"{path}.fields", "message": "数据表至少需要一个字段。"})
+                issues.append({"path": f"{path}.fields", "message": "数据表至少需要一个测量项。"})
                 continue
             table_field_keys: set[str] = set()
             for field_index, field in enumerate(table_fields):
                 field_path = f"{path}.fields[{field_index}]"
                 key = field.get("key")
                 if not isinstance(key, str) or not key.isidentifier():
-                    issues.append({"path": f"{field_path}.key", "message": "字段键必须是合法标识符。"})
+                    issues.append({"path": f"{field_path}.key", "message": "测量项的内部编号只能使用字母、数字和下划线，且不能以数字开头。"})
                     continue
                 if key in fields:
-                    issues.append({"path": f"{field_path}.key", "message": "字段键不能重复。"})
+                    issues.append({"path": f"{field_path}.key", "message": "测量项的内部编号不能重复。"})
                 fields[key] = field
                 table_field_keys.add(key)
                 if field.get("type") not in ALLOWED_FIELD_TYPES:
-                    issues.append({"path": f"{field_path}.type", "message": "字段类型不受支持。"})
+                    issues.append({"path": f"{field_path}.type", "message": "该测量项的录入类型不受支持。"})
                 if not field.get("label"):
-                    issues.append({"path": f"{field_path}.label", "message": "字段名称不能为空。"})
+                    issues.append({"path": f"{field_path}.label", "message": "测量名称不能为空。"})
                 if field.get("scope", "individual") not in ALLOWED_FIELD_SCOPES:
-                    issues.append({"path": f"{field_path}.scope", "message": "字段归属仅支持个人或同组共享。"})
+                    issues.append({"path": f"{field_path}.scope", "message": "测量数据只能设为个人记录或组内共享。"})
                 if field.get("type") in {"number", "integer"} and not field.get("unit"):
-                    issues.append({"path": f"{field_path}.unit", "message": "数值字段的单位不能为空。"})
+                    issues.append({"path": f"{field_path}.unit", "message": "数值测量项的单位不能为空。"})
                 if field.get("type") == "enum":
                     options = field.get("options")
                     if not isinstance(options, list) or not options or any(not str(option).strip() for option in options):
-                        issues.append({"path": f"{field_path}.options", "message": "枚举字段至少需要一个非空选项。"})
+                        issues.append({"path": f"{field_path}.options", "message": "选择类型至少需要一个非空选项。"})
                 precision = field.get("precision", 0)
                 if not isinstance(precision, int) or precision < 0 or precision > 8:
                     issues.append({"path": f"{field_path}.precision", "message": "小数位数必须是 0 到 8 的整数。"})
                 if field.get("min") is not None and field.get("max") is not None and field["min"] >= field["max"]:
-                    issues.append({"path": field_path, "message": "字段最大值必须大于最小值。"})
+                    issues.append({"path": field_path, "message": "测量值上限必须大于下限。"})
 
             grid = table.get("grid")
             if grid is not None:
@@ -157,7 +157,7 @@ class TemplateService:
                         if kind not in {"label", "field"}:
                             issues.append({"path": f"{cell_path}.kind", "message": "单元格用途不受支持。"})
                         if kind == "field" and cell.get("fieldKey") not in table_field_keys:
-                            issues.append({"path": f"{cell_path}.fieldKey", "message": "数据输入格必须绑定本表字段。"})
+                            issues.append({"path": f"{cell_path}.fieldKey", "message": "数据输入格必须选择本表的测量项。"})
                         if kind == "field" and (row_span > 1 or col_span > 1):
                             issues.append({"path": cell_path, "message": "数据输入单元格不能合并。"})
                         for grid_row in range(row, row + row_span):
@@ -188,9 +188,9 @@ class TemplateService:
             if function not in ALLOWED_FUNCTIONS:
                 issues.append({"path": f"{path}.function", "message": "计算函数不在白名单中。"})
             if not isinstance(args, list) or not args or any(arg not in known_values for arg in args):
-                issues.append({"path": f"{path}.args", "message": "计算参数必须引用已定义字段或前序计算。"})
+                issues.append({"path": f"{path}.args", "message": "计算所用的数据必须先在表格或前面的计算中定义。"})
             elif any(arg in fields and fields[arg].get("type") not in {"number", "integer"} for arg in args):
-                issues.append({"path": f"{path}.args", "message": "只有数值或整数字段可以参与计算。"})
+                issues.append({"path": f"{path}.args", "message": "只有数值或整数测量项可以参与计算。"})
             if function == "POW":
                 parameters = calculation.get("parameters")
                 if not isinstance(parameters, list) or len(parameters) != 1 or not isinstance(parameters[0], (int, float)):
@@ -203,7 +203,7 @@ class TemplateService:
             if chart.get("type") not in ALLOWED_CHARTS:
                 issues.append({"path": f"{path}.type", "message": "首期图表仅支持散点图。"})
             if chart.get("x") not in known_values or chart.get("y") not in known_values:
-                issues.append({"path": path, "message": "图表坐标轴必须引用已定义字段或计算结果。"})
+                issues.append({"path": path, "message": "图表坐标轴必须选择已有的测量数据或计算结果。"})
             if chart.get("fit") not in (None, "linear"):
                 issues.append({"path": f"{path}.fit", "message": "首期仅支持线性拟合。"})
 

@@ -69,7 +69,7 @@ class RosterService:
         for index, row in enumerate(rows, start=2):
             for field in REQUIRED_FIELDS:
                 if not row.get(field):
-                    errors.append({"row": index, "field": field, "message": "该字段不能为空。"})
+                    errors.append({"row": index, "field": field, "message": "该项不能为空。"})
             student_number = row.get("student_number", "")
             if student_number and (len(student_number) > 64 or not student_number.replace("-", "").isalnum()):
                 errors.append({"row": index, "field": "student_number", "message": "学号格式不合法。"})

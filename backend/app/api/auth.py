@@ -51,7 +51,7 @@ def auth_mode() -> AuthModeView:
     return AuthModeView(
         demoEnabled=settings.demo_auth_enabled,
         demoAccounts={
-            "student": settings.demo_student_account,
+            "student": "",
             "teacher": settings.demo_teacher_account,
             "admin": settings.demo_admin_account,
         } if settings.demo_auth_enabled else {},

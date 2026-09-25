@@ -25,6 +25,8 @@ def main() -> None:
 
     with SessionLocal() as db:
         for role, account_key, default_account, name_key, default_name, password_key in SEEDS:
+            if demo_enabled and role == "student":
+                continue  # Students are created only by committing a teacher's roster.
             account = os.getenv(account_key, default_account).strip().casefold()
             if db.scalar(select(User).where(User.account == account)):
                 print(f"保留已有账号：{account}")

@@ -6,7 +6,7 @@ import pytest
 from app.api import auth as auth_api
 from app.auth.service import AuthService
 from app.config import Settings
-from app.db.models import AuditLog, AuthSession
+from app.db.models import AuditLog, AuthSession, ClassMember, LabClass
 
 
 def login(client, account="20260001", password="SecurePass2026"):
@@ -159,11 +159,16 @@ def test_inactive_account_and_invalid_password_have_stable_codes(client, seed_us
     assert invalid.json()["error"]["code"] == "invalid_credentials"
 
 
-def test_demo_login_uses_existing_account_and_any_numeric_password(client, seed_user, monkeypatch) -> None:
-    seed_user(account="20260001", enrollment_completed=False)
+def test_demo_login_requires_imported_student_number_and_accepts_any_nonempty_password(client, seed_user, db, monkeypatch) -> None:
+    student = seed_user(account="20260001", enrollment_completed=False)
     seed_user(account="20269999", enrollment_completed=False)
-    seed_user(role="teacher", account="t0001", enrollment_completed=True)
+    teacher = seed_user(role="teacher", account="t0001", enrollment_completed=True)
     seed_user(role="admin", account="admin", enrollment_completed=True)
+    lab_class = LabClass(class_code="DEMO01", class_name="演示班级", semester="2026秋", teacher_id=teacher.id, created_at=datetime.now(UTC))
+    db.add(lab_class)
+    db.flush()
+    db.add(ClassMember(class_id=lab_class.id, user_id=student.id, joined_at=datetime.now(UTC)))
+    db.commit()
     demo_settings = Settings(demo_auth_enabled=True)
     monkeypatch.setattr(auth_api, "settings", demo_settings)
     monkeypatch.setattr(auth_api, "auth_service", AuthService(demo_settings))
@@ -171,15 +176,15 @@ def test_demo_login_uses_existing_account_and_any_numeric_password(client, seed_
     mode = client.get("/api/auth/mode")
     assert mode.status_code == 200
     assert mode.json()["demoEnabled"] is True
-    assert mode.json()["demoAccounts"] == {"student": "20260001", "teacher": "t0001", "admin": "admin"}
+    assert mode.json()["demoAccounts"] == {"student": "", "teacher": "t0001", "admin": "admin"}
 
-    for account, role in (("20260001", "student"), ("20269999", "student"), ("t0001", "teacher"), ("admin", "admin")):
-        response = client.post("/api/auth/login", json={"account": account, "password": "123"})
+    for account, password, role in (("20260001", "文字也可以!", "student"), ("t0001", "teacher-pass", "teacher"), ("admin", "123", "admin")):
+        response = client.post("/api/auth/login", json={"account": account, "password": password})
         assert response.status_code == 200
         assert response.json()["role"] == role
         assert client.get(f"/api/workspaces/{role}").status_code == 200
 
-    for account, password in (("", "123"), ("missing", "123"), ("20260001", "letters"), ("20260001", "")):
+    for account, password in (("", "123"), ("missing", "123"), ("20269999", "abc"), ("20260001", "")):
         response = client.post("/api/auth/login", json={"account": account, "password": password})
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "invalid_demo_credentials"

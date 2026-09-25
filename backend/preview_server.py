@@ -58,7 +58,7 @@ def prepare_preview_database() -> None:
                 shutil.copy2(preview_db_path, backup_path)
             command.stamp(migration_config, "20260921_0003")
         elif {"phone_number", "enrollment_completed"}.issubset(user_columns):
-            command.stamp(migration_config, "head")
+            command.stamp(migration_config, "20260923_0004")
         else:
             raise SystemExit("预览数据库用户表结构无法自动识别，请先备份并检查数据库。")
         command.upgrade(migration_config, "head")

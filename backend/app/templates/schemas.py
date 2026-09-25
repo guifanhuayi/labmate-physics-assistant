@@ -28,6 +28,12 @@ class TemplateView(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class WordImportView(BaseModel):
+    schema_data: dict[str, Any] = Field(alias="schema")
+    warnings: list[str]
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class ValidationIssue(BaseModel):
     path: str
     message: str
@@ -54,6 +60,7 @@ class AssignmentCreate(BaseModel):
     start_at: datetime = Field(alias="startAt")
     due_at: datetime = Field(alias="dueAt")
     status: Literal["draft", "open"] = "open"
+    group_sharing_enabled: bool = Field(default=False, alias="groupSharingEnabled")
 
 
 class AssignmentView(BaseModel):
@@ -64,6 +71,16 @@ class AssignmentView(BaseModel):
     start_at: datetime = Field(alias="startAt")
     due_at: datetime = Field(alias="dueAt")
     status: str
+    group_sharing_enabled: bool = Field(alias="groupSharingEnabled")
+    deleted_at: datetime | None = Field(default=None, alias="deletedAt")
+    purge_after: datetime | None = Field(default=None, alias="purgeAfter")
+
+
+class AssignmentDeletionView(BaseModel):
+    id: UUID
+    deleted_at: datetime = Field(alias="deletedAt")
+    purge_after: datetime = Field(alias="purgeAfter")
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class AssignmentSummary(AssignmentView):

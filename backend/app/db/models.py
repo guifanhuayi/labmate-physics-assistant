@@ -150,5 +150,84 @@ class Assignment(Base):
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="open", index=True)
+    group_sharing_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purge_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class ExperimentGroup(Base):
+    __tablename__ = "experiment_groups"
+    __table_args__ = (UniqueConstraint("assignment_id", "name", name="uq_experiment_groups_name"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    assignment_id: Mapped[UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "user_id", name="uq_group_members_assignment_user"),
+        UniqueConstraint("group_id", "user_id", name="uq_group_members_group_user"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    assignment_id: Mapped[UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("experiment_groups.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SubmissionDraft(Base):
+    __tablename__ = "submission_drafts"
+    __table_args__ = (UniqueConstraint("assignment_id", "student_id", name="uq_submission_drafts_assignment_student"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    assignment_id: Mapped[UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    student_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    values_json: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DraftMutation(Base):
+    __tablename__ = "draft_mutations"
+    __table_args__ = (UniqueConstraint("draft_id", "version", name="uq_draft_mutations_version"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    draft_id: Mapped[UUID] = mapped_column(ForeignKey("submission_drafts.id", ondelete="CASCADE"), index=True)
+    request_id: Mapped[str] = mapped_column(String(36), unique=True)
+    version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SharedDataset(Base):
+    __tablename__ = "shared_datasets"
+    __table_args__ = (UniqueConstraint("group_id", name="uq_shared_datasets_group"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    assignment_id: Mapped[UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("experiment_groups.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    values_json: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    sources_json: Mapped[dict[str, dict[str, str]]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SharedDataRevision(Base):
+    __tablename__ = "shared_data_revisions"
+    __table_args__ = (UniqueConstraint("dataset_id", "version", name="uq_shared_data_revisions_version"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    dataset_id: Mapped[UUID] = mapped_column(ForeignKey("shared_datasets.id", ondelete="CASCADE"), index=True)
+    request_id: Mapped[str] = mapped_column(String(36), unique=True)
+    version: Mapped[int] = mapped_column(Integer)
+    changes_json: Mapped[dict[str, dict[str, str | None]]] = mapped_column(JSON)
+    edited_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

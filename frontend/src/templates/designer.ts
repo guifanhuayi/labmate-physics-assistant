@@ -63,6 +63,7 @@ export interface TemplateCalculation {
   args: string[]
   unit: string
   symbol?: string
+  formulaText?: string
   parameters?: number[]
 }
 
@@ -108,6 +109,15 @@ const symbolReplacements: Array<[RegExp, string]> = [
 
 export function applySymbolShortcut(value: string) {
   return symbolReplacements.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), value).replace(/\s+/g, '')
+}
+
+export function createMeasurementField(tableId: string, column: number, existing: TemplateField[] = []): TemplateField {
+  const keys = new Set(existing.map((item) => item.key))
+  const base = `${tableId}_measurement_${column + 1}`
+  let key = base
+  let suffix = 2
+  while (keys.has(key)) key = `${base}_${suffix++}`
+  return { key, label: `测量数据 ${column + 1}`, symbol: '', type: 'number', unit: '1', precision: 2, required: true, scope: 'individual' }
 }
 
 const cellId = (row: number, column: number) => `r${row + 1}c${column + 1}`

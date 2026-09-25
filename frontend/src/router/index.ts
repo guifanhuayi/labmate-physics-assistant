@@ -2,7 +2,8 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import type { Role } from '../api/client'
 import LoginPage from '../pages/LoginPage.vue'
-import WorkspacePage from '../pages/WorkspacePage.vue'
+import StudentWorkspacePage from '../pages/StudentWorkspacePage.vue'
+import StudentAssignmentPage from '../pages/StudentAssignmentPage.vue'
 import ManagementPage from '../pages/ManagementPage.vue'
 
 
@@ -10,7 +11,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/login' },
   { path: '/login', name: 'login', component: LoginPage, meta: { public: true } },
   { path: '/change-password', redirect: '/' },
-  { path: '/student', name: 'student', component: WorkspacePage, meta: { role: 'student' } },
+  { path: '/student', name: 'student', component: StudentWorkspacePage, meta: { role: 'student' } },
+  { path: '/student/assignments/:id', name: 'student-assignment', component: StudentAssignmentPage, meta: { role: 'student' } },
   { path: '/teacher', name: 'teacher', component: ManagementPage, meta: { role: 'teacher' } },
   { path: '/admin', name: 'admin', component: ManagementPage, meta: { role: 'admin' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },

@@ -5,6 +5,9 @@ from uuid import UUID
 from openpyxl import Workbook
 from sqlalchemy import func, select
 
+from app.api import auth as auth_api
+from app.auth.service import AuthService
+from app.config import Settings
 from app.db.models import Assignment, ClassMember, ExperimentTemplate, LabClass, RosterImport, TemplateVersion, User
 
 
@@ -44,6 +47,31 @@ def test_teacher_can_create_class_preview_and_commit_csv(client, seed_user, db) 
     assert imported.name == "李明"
     assert imported.enrollment_completed is False
     assert db.scalar(select(func.count(ClassMember.id))) == 1
+
+
+def test_imported_roster_student_can_sign_in_with_any_demo_password(client, seed_user, monkeypatch) -> None:
+    teacher = seed_user(role="teacher", account="t0001")
+    seed_user(role="student", account="20269999")  # Existing but not imported.
+    assert login(client).status_code == 200
+    class_id = create_class(client, teacher.id).json()["id"]
+    preview = client.post(
+        f"/api/roster-imports/preview?class_id={class_id}",
+        files={"file": ("roster.csv", "学号,姓名\n20260022,李明\n".encode("utf-8-sig"), "text/csv")},
+    )
+    assert preview.status_code == 201
+    assert client.post(f"/api/roster-imports/{preview.json()['id']}/commit").status_code == 200
+
+    demo_settings = Settings(demo_auth_enabled=True)
+    monkeypatch.setattr(auth_api, "settings", demo_settings)
+    monkeypatch.setattr(auth_api, "auth_service", AuthService(demo_settings))
+    imported = client.post("/api/auth/login", json={"account": "20260022", "password": "任意演示密码!"})
+    assert imported.status_code == 200
+    assert imported.json()["account"] == "20260022"
+    assert imported.json()["role"] == "student"
+    for number in ("20260023", "20269999"):
+        denied = client.post("/api/auth/login", json={"account": number, "password": "anything"})
+        assert denied.status_code == 401
+        assert denied.json()["error"]["code"] == "invalid_demo_credentials"
 
 
 def test_roster_preview_accepts_xlsx_and_blocks_errors(client, seed_user, db) -> None:

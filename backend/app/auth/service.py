@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.errors import AuthError
 from app.config import Settings
-from app.db.models import AuditLog, AuthSession, PhoneVerification, User
+from app.db.models import AuditLog, AuthSession, ClassMember, PhoneVerification, User
 
 
 @dataclass(frozen=True)
@@ -252,11 +252,16 @@ class AuthService:
 
     def _authenticate_demo(self, db: Session, account: str, password: str, client_ip: str | None) -> AuthenticatedSession:
         normalized = normalize_account(account)
-        if not normalized or not password.isascii() or not password.isdigit():
-            raise AuthError("invalid_demo_credentials", "请输入演示账号和任意数字密码。", 401)
+        if not normalized or not password:
+            raise AuthError("invalid_demo_credentials", "请输入账号和任意非空密码。", 401)
         user = db.scalar(select(User).where(User.account == normalized, User.status == "active"))
         if not user:
-            raise AuthError("invalid_demo_credentials", "演示账号不存在或已停用。", 401)
+            raise AuthError("invalid_demo_credentials", "账号不存在、未导入班级名单或已停用。", 401)
+        if user.role == "student" and (
+            normalize_account(user.student_number or "") != normalized
+            or not db.scalar(select(ClassMember.id).where(ClassMember.user_id == user.id))
+        ):
+            raise AuthError("invalid_demo_credentials", "账号不存在、未导入班级名单或已停用。", 401)
 
         result = self._create_session(db, user)
         self._audit(

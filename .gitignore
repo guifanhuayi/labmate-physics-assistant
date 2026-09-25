@@ -6,6 +6,7 @@ __pycache__/
 *.py[cod]
 backend/*.sqlite
 backend/preview-server.*.log
+backend/preview-server-*.log
 backend/*.egg-info/
 .venv/
 frontend/node_modules/

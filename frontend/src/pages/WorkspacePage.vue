@@ -52,9 +52,9 @@ async function signOut() {
       <section v-else class="empty-workspace" aria-live="polite">
         <div class="empty-symbol" aria-hidden="true">λ</div>
         <h2>{{ loading ? '正在加载工作台' : '基础工作台已经就绪' }}</h2>
-        <p v-if="!loading">{{ auth.mode?.demoEnabled ? '当前为功能演示：账号用于选择角色，数字密码不作为正式账号密码。' : '当前版本已开放真实身份、持久会话和角色权限。后续功能将按纵向业务切片逐步接入。' }}</p>
+        <p v-if="!loading">{{ auth.mode?.demoEnabled ? '当前为功能演示：学生使用已导入的学号登录，演示密码不作为正式账号密码。' : '当前版本已开放真实身份、持久会话和角色权限。后续功能将按纵向业务切片逐步接入。' }}</p>
         <div v-if="!loading" class="status-grid">
-          <div><span>登录方式</span><strong>{{ auth.mode?.demoEnabled ? '演示账号与数字密码' : '账号与密码' }}</strong></div>
+          <div><span>登录方式</span><strong>{{ auth.mode?.demoEnabled ? '演示账号与任意非空密码' : '账号与密码' }}</strong></div>
           <div><span>当前角色</span><strong>{{ roleLabel }}</strong></div>
           <div><span>权限来源</span><strong>服务端授权</strong></div>
         </div>

@@ -1,7 +1,10 @@
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from uuid import UUID
 
+from docx import Document
+from openpyxl import Workbook
 from sqlalchemy import select
 
 from app.db.models import LabClass, TemplateVersion
@@ -36,6 +39,22 @@ def login(client):
 
 def create_template(client):
     return client.post("/api/templates", json={"name": "伏安法测电阻", "description": "测量电阻并进行 U-I 线性拟合"})
+
+
+def test_teacher_can_preview_excel_without_saving(client, seed_user) -> None:
+    seed_user(role="teacher", account="t0001")
+    assert login(client).status_code == 200
+    book = Workbook()
+    sheet = book.active
+    sheet["A1"] = "时间 Δt"
+    sheet["A2"] = ""
+    sheet["B2"] = "说明"
+    output = BytesIO()
+    book.save(output)
+    response = client.post("/api/templates/import-xlsx", files={"file": ("记录.xlsx", output.getvalue())})
+    assert response.status_code == 200
+    assert response.json()["schema"]["tables"][0]["grid"]["columns"] == 2
+    assert client.get("/api/templates").json() == []
 
 
 def test_template_must_validate_before_publish(client, seed_user) -> None:
@@ -300,3 +319,69 @@ def test_template_rejects_invalid_grid_width_and_field_scope(client, seed_user) 
     assert "tables[0].fields[0].scope" in paths
     assert "tables[0].grid.columnWidths" in paths
     assert "tables[0].grid.frozenRows" in paths
+
+
+def test_word_import_previews_editable_merged_table_without_saving(client, seed_user) -> None:
+    seed_user(role="teacher", account="t0001")
+    assert login(client).status_code == 200
+    document = Document()
+    metadata = document.add_table(rows=2, cols=2)
+    metadata.cell(0, 0).text = "实验名称"
+    metadata.cell(0, 1).text = "光学实验"
+    metadata.cell(1, 0).text = "姓名"
+    document.add_paragraph("调整光路并记录光斑位置")
+    table = document.add_table(rows=4, cols=3)
+    table.cell(0, 0).merge(table.cell(0, 2)).text = "表1. 光斑位置记录"
+    for index, label in enumerate(("序号", "位置/cm", "距离/cm")):
+        table.cell(1, index).text = label
+    table.cell(2, 0).text = "1"
+    table.cell(3, 0).text = "2"
+    content = BytesIO()
+    document.save(content)
+
+    response = client.post(
+        "/api/templates/import-docx",
+        files={"file": ("optics.docx", content.getvalue(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema"]["title"] == "光学实验"
+    assert len(body["schema"]["tables"]) == 1
+    imported = body["schema"]["tables"][0]
+    assert imported["title"] == "光斑位置记录"
+    assert imported["grid"]["cells"][0]["colSpan"] == 3
+    assert any(cell["kind"] == "field" for cell in imported["grid"]["cells"])
+    assert client.get("/api/templates").json() == []
+    assert client.post("/api/templates/import-docx", files={"file": ("bad.doc", b"not a docx")}).status_code == 422
+
+
+def test_teacher_can_remove_template_without_erasing_published_assignment(client, seed_user, db) -> None:
+    teacher = seed_user(role="teacher", account="t0001")
+    assert login(client).status_code == 200
+    template_id = create_template(client).json()["id"]
+    client.put(f"/api/templates/{template_id}/draft", json={"name": "伏安法测电阻", "description": "", "schema": VALID_SCHEMA})
+    version_id = client.post(f"/api/templates/{template_id}/publish").json()["id"]
+    lab_class = LabClass(class_code="PHY2503", class_name="物理2503", semester="2026秋", teacher_id=teacher.id, created_at=datetime.now(UTC))
+    db.add(lab_class)
+    db.commit()
+    start = datetime.now(UTC)
+    payload = {"templateVersionId": version_id, "classId": str(lab_class.id), "title": "电阻实验", "startAt": start.isoformat(), "dueAt": (start + timedelta(days=1)).isoformat()}
+    assert client.post("/api/assignments", json=payload).status_code == 201
+
+    assert client.delete(f"/api/templates/{template_id}").status_code == 204
+    assert client.get("/api/templates").json() == []
+    assert len(client.get("/api/assignments").json()) == 1
+    assert client.post("/api/assignments", json=payload).status_code == 404
+    assert client.delete(f"/api/templates/{template_id}").status_code == 404
+
+
+def test_teacher_cannot_delete_another_teachers_template(client, seed_user) -> None:
+    seed_user(role="teacher", account="t0001")
+    seed_user(role="teacher", account="t0002")
+    assert login(client).status_code == 200
+    template_id = create_template(client).json()["id"]
+    assert client.post("/api/auth/logout").status_code == 204
+    assert client.post("/api/auth/login", json={"account": "t0002", "password": "InitialPass2026"}).status_code == 200
+    assert client.delete(f"/api/templates/{template_id}").status_code == 403
+    assert client.get("/api/templates").json() == []

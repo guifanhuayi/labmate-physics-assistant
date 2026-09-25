@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandLockup from '../components/BrandLockup.vue'
 import TemplateDesigner from '../components/TemplateDesigner.vue'
+import AssignmentGroups from '../components/AssignmentGroups.vue'
 import { ApiError, managementApi, type AssignmentView, type ClassView, type ImportPreview, type StudentView, type TemplateView, type TeacherView } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 
@@ -16,6 +17,7 @@ const selectedClassId = ref('')
 const studentsLoading = ref(false)
 const templates = ref<TemplateView[]>([])
 const assignments = ref<AssignmentView[]>([])
+const deletedAssignments = ref<AssignmentView[]>([])
 const busy = ref(false)
 const message = ref('')
 const error = ref('')
@@ -24,7 +26,8 @@ const classForm = reactive({ classCode: 'PHY2401', className: '物理2401', seme
 const rosterClassId = ref('')
 const rosterFile = ref<File | null>(null)
 const rosterPreview = ref<ImportPreview | null>(null)
-const assignment = reactive({ templateVersionId: '', classId: '', title: '实验一：伏安法测电阻', startAt: '', dueAt: '' })
+const assignment = reactive({ templateVersionId: '', classId: '', title: '实验一：伏安法测电阻', startAt: '', dueAt: '', groupSharingEnabled: false })
+const expandedAssignmentId = ref('')
 
 function showError(value: unknown) {
   error.value = value instanceof ApiError ? value.message : '操作失败，请稍后再试。'
@@ -38,6 +41,10 @@ async function loadData() {
     if (isTeacher.value) {
       templates.value = await managementApi.listTemplates()
       assignments.value = await managementApi.listAssignments()
+      deletedAssignments.value = await managementApi.listDeletedAssignments()
+      if (assignment.templateVersionId && !templates.value.some((item) => item.latestVersionId === assignment.templateVersionId)) {
+        assignment.templateVersionId = ''
+      }
     }
     if (!rosterClassId.value && classes.value[0]) rosterClassId.value = classes.value[0].id
     if (!assignment.classId && classes.value[0]) assignment.classId = classes.value[0].id
@@ -126,7 +133,7 @@ async function commitRoster() {
   try {
     const result = await managementApi.commitRoster(rosterPreview.value.id)
     message.value = auth.mode?.demoEnabled
-      ? `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条。学生可用学号和任意数字密码演示登录。`
+      ? `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条。学生可用已导入的学号和任意非空密码演示登录。`
       : `导入完成：新增 ${result.created} 人，新增班级关系 ${result.membershipsAdded} 条；${result.requiresEnrollment} 名学生需用姓名和学号完成首次设置。`
     rosterPreview.value = null
     await loadData()
@@ -146,8 +153,31 @@ async function publishAssignment() {
       title: assignment.title,
       startAt: new Date(assignment.startAt).toISOString(),
       dueAt: new Date(assignment.dueAt).toISOString(),
+      groupSharingEnabled: assignment.groupSharingEnabled,
     })
     message.value = '实验任务已发布到班级。'
+    await loadData()
+  } catch (value) { showError(value) } finally { busy.value = false }
+}
+
+async function removeAssignment(item: AssignmentView) {
+  const purgeDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('zh-CN')
+  const confirmed = window.confirm(`确认删除实验任务“${item.title}”吗？\n\n${item.className}的学生将立即看不到该任务，也不能继续录入。学生草稿、分组及共享数据保留 30 天，期间可以恢复，预计 ${purgeDate} 后永久清理。`)
+  if (!confirmed) return
+  busy.value = true; error.value = ''; message.value = ''
+  try {
+    const result = await managementApi.deleteAssignment(item.id)
+    if (expandedAssignmentId.value === item.id) expandedAssignmentId.value = ''
+    message.value = `任务“${item.title}”已移入 30 天保留区，可在 ${new Date(result.purgeAfter).toLocaleString('zh-CN')} 前恢复。`
+    await loadData()
+  } catch (value) { showError(value) } finally { busy.value = false }
+}
+
+async function restoreAssignment(item: AssignmentView) {
+  busy.value = true; error.value = ''; message.value = ''
+  try {
+    await managementApi.restoreAssignment(item.id)
+    message.value = `任务“${item.title}”已恢复，学生记录也已恢复可见。`
     await loadData()
   } catch (value) { showError(value) } finally { busy.value = false }
 }
@@ -176,7 +206,7 @@ onMounted(loadData)
     </header>
     <main class="workspace-shell management-shell">
       <section class="workspace-intro">
-        <div><p class="eyebrow">阶段 0—3</p><h1>{{ isTeacher ? '教师准备工作台' : '管理员工作台' }}</h1><p>班级、名单、模板版本和实验任务均由服务器持久化与授权。</p></div>
+        <div><p class="eyebrow">阶段 0—4</p><h1>{{ isTeacher ? '教师准备工作台' : '管理员工作台' }}</h1><p>班级、名单、模板版本、实验任务和分组均由服务器持久化与授权。</p></div>
         <span class="verified-badge">服务器已验证</span>
       </section>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
@@ -242,6 +272,7 @@ onMounted(loadData)
           <label>已发布模板版本</label><select v-model="assignment.templateVersionId" required><option value="">请选择</option><option v-for="item in templates.filter((value) => value.latestVersionId)" :key="item.id" :value="item.latestVersionId || ''">{{ item.name }} · v{{ item.versionCount }}</option></select>
           <label>目标班级</label><select v-model="assignment.classId" required><option value="">请选择</option><option v-for="item in classes" :key="item.id" :value="item.id">{{ item.classCode }} · {{ item.className }}</option></select>
           <div class="two-fields"><div><label>开放时间</label><input v-model="assignment.startAt" type="datetime-local" required /></div><div><label>截止时间</label><input v-model="assignment.dueAt" type="datetime-local" required /></div></div>
+          <label class="checkbox-label"><input v-model="assignment.groupSharingEnabled" type="checkbox" />允许本任务的小组共享模板中标记为“组内共享”的测量数据</label>
           <button class="primary-button" :disabled="busy">发布实验任务</button>
         </form>
         <div class="work-panel">
@@ -252,11 +283,35 @@ onMounted(loadData)
         <div class="work-panel panel-wide">
           <div class="panel-heading"><p>当前</p><h2>实验任务</h2></div>
           <div class="assignment-list">
-            <article v-for="item in assignments" :key="item.id"><div><strong>{{ item.title }}</strong><span>{{ item.classCode }} · {{ item.className }}　{{ item.templateName }} v{{ item.versionNumber }}</span></div><div class="assignment-time"><span>{{ new Date(item.startAt).toLocaleString('zh-CN') }}</span><b>至</b><span>{{ new Date(item.dueAt).toLocaleString('zh-CN') }}</span></div></article>
+            <article v-for="item in assignments" :key="item.id" class="assignment-with-groups">
+              <div><strong>{{ item.title }}</strong><span>{{ item.classCode }} · {{ item.className }}　{{ item.templateName }} v{{ item.versionNumber }} · {{ item.groupSharingEnabled ? '组内共享已开启' : '个人录入' }}</span></div>
+              <div class="assignment-time"><span>{{ new Date(item.startAt).toLocaleString('zh-CN') }}</span><b>至</b><span>{{ new Date(item.dueAt).toLocaleString('zh-CN') }}</span></div>
+              <div class="assignment-actions"><button type="button" class="secondary-button compact-button" @click="expandedAssignmentId = expandedAssignmentId === item.id ? '' : item.id">{{ expandedAssignmentId === item.id ? '收起分组' : '管理分组与共享' }}</button><button type="button" class="danger-button compact-button" :disabled="busy" :aria-label="`删除任务 ${item.title}`" @click="removeAssignment(item)">删除任务</button></div>
+              <AssignmentGroups v-if="expandedAssignmentId === item.id" :assignment="item" @updated="loadData" />
+            </article>
             <p v-if="!assignments.length" class="muted-copy">尚未发布实验任务。</p>
+          </div>
+        </div>
+        <div class="work-panel panel-wide">
+          <div class="panel-heading"><p>30 天</p><h2>已删除任务 · 可恢复</h2></div>
+          <div class="assignment-list">
+            <article v-for="item in deletedAssignments" :key="item.id" class="deleted-assignment-row"><div><strong>{{ item.title }}</strong><span>{{ item.className }} · {{ item.templateName }} v{{ item.versionNumber }}</span><small>预计永久清理：{{ item.purgeAfter ? new Date(item.purgeAfter).toLocaleString('zh-CN') : '待确认' }}</small></div><button type="button" class="secondary-button compact-button" :disabled="busy" @click="restoreAssignment(item)">恢复任务与数据</button></article>
+            <p v-if="!deletedAssignments.length" class="muted-copy">保留区暂无任务。</p>
           </div>
         </div>
       </section>
     </main>
   </div>
 </template>
+
+<style scoped>
+.checkbox-label { display: flex; align-items: center; gap: 9px; }
+.checkbox-label input { width: auto; min-height: 0; }
+.assignment-list .assignment-with-groups { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: start; }
+.assignment-with-groups :deep(.group-manager) { grid-column: 1 / -1; }
+.assignment-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.assignment-actions button { margin: 0; }
+.deleted-assignment-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.deleted-assignment-row small { display: block; margin-top: 5px; color: var(--muted); }
+@media (max-width: 800px) { .assignment-list .assignment-with-groups { grid-template-columns: 1fr; } .assignment-time { text-align: left; } .deleted-assignment-row { align-items: flex-start; flex-direction: column; } }
+</style>

@@ -26,12 +26,13 @@ export class ApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly status: number,
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message)
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isForm = init.body instanceof FormData
   const response = await fetch(path, {
     credentials: 'include',
@@ -44,6 +45,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       body?.error?.code || 'request_failed',
       body?.error?.message || '请求失败，请稍后再试。',
       response.status,
+      body?.error?.details,
     )
   }
   if (response.status === 204) return undefined as T
@@ -117,6 +119,11 @@ export interface ValidationView {
   issues: { path: string; message: string }[]
 }
 
+export interface WordImportView {
+  schema: Record<string, unknown>
+  warnings: string[]
+}
+
 export interface AssignmentView {
   id: string
   templateVersionId: string
@@ -125,10 +132,13 @@ export interface AssignmentView {
   startAt: string
   dueAt: string
   status: string
+  groupSharingEnabled: boolean
   templateName: string
   versionNumber: number
   className: string
   classCode: string
+  deletedAt: string | null
+  purgeAfter: string | null
 }
 
 export const managementApi = {
@@ -145,6 +155,17 @@ export const managementApi = {
   },
   commitRoster: (id: string) => request<ImportResult>(`/api/roster-imports/${id}/commit`, { method: 'POST' }),
   listTemplates: () => request<TemplateView[]>('/api/templates'),
+  importWordTemplate: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return request<WordImportView>('/api/templates/import-docx', { method: 'POST', body })
+  },
+  importExcelTemplate: (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return request<WordImportView>('/api/templates/import-xlsx', { method: 'POST', body })
+  },
+  deleteTemplate: (id: string) => request<void>(`/api/templates/${id}`, { method: 'DELETE' }),
   createTemplate: (name: string, description: string) =>
     request<TemplateView>('/api/templates', { method: 'POST', body: JSON.stringify({ name, description }) }),
   saveTemplate: (id: string, name: string, description: string, schema: Record<string, unknown>) =>
@@ -154,6 +175,9 @@ export const managementApi = {
   validateTemplate: (id: string) => request<ValidationView>(`/api/templates/${id}/validate`, { method: 'POST' }),
   publishTemplate: (id: string) => request<{ id: string; versionNumber: number }>(`/api/templates/${id}/publish`, { method: 'POST' }),
   listAssignments: () => request<AssignmentView[]>('/api/assignments'),
-  createAssignment: (payload: { templateVersionId: string; classId: string; title: string; startAt: string; dueAt: string }) =>
+  listDeletedAssignments: () => request<AssignmentView[]>('/api/assignments/deleted'),
+  deleteAssignment: (id: string) => request<{ id: string; deletedAt: string; purgeAfter: string }>(`/api/assignments/${id}`, { method: 'DELETE' }),
+  restoreAssignment: (id: string) => request<void>(`/api/assignments/${id}/restore`, { method: 'POST' }),
+  createAssignment: (payload: { templateVersionId: string; classId: string; title: string; startAt: string; dueAt: string; groupSharingEnabled: boolean }) =>
     request<{ id: string; status: string }>('/api/assignments', { method: 'POST', body: JSON.stringify(payload) }),
 }

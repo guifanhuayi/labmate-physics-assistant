@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { renderPhysicsNotation } from '../templates/physicsNotation'
+import PhysicsNotationInput from './PhysicsNotationInput.vue'
 import {
   cellAt,
+  createMeasurementField,
   createSpreadsheetGrid,
   mergeSpreadsheetCells,
   resizeSpreadsheetGrid,
@@ -15,8 +18,15 @@ import {
 const table = defineModel<TemplateTable>({ required: true })
 const selection = ref<CellRange | null>(null)
 const localError = ref('')
-const undoStack = ref<SpreadsheetGrid[]>([])
-const redoStack = ref<SpreadsheetGrid[]>([])
+const undoStack = ref<TemplateTable[]>([])
+const redoStack = ref<TemplateTable[]>([])
+const dragAnchor = ref<SpreadsheetCell | null>(null)
+const dragging = ref(false)
+const batchText = ref('')
+
+function stopDragging() { dragging.value = false }
+onMounted(() => window.addEventListener('pointerup', stopDragging))
+onUnmounted(() => window.removeEventListener('pointerup', stopDragging))
 
 const grid = computed(() => {
   if (!table.value.grid) table.value.grid = createSpreadsheetGrid(table.value.fields, table.value.minimumRows)
@@ -26,6 +36,9 @@ const grid = computed(() => {
 const selectedCell = computed(() => selection.value
   ? cellAt(grid.value, selection.value.startRow, selection.value.startColumn) || null
   : null)
+const selectedCells = computed(() => grid.value.cells.filter(isSelected))
+const selectedKind = computed(() => selectedCells.value.every((cell) => cell.kind === 'label') ? 'label'
+  : selectedCells.value.every((cell) => cell.kind === 'field') ? 'field' : '')
 
 const selectionLabel = computed(() => {
   if (!selection.value) return '尚未选择单元格'
@@ -36,8 +49,13 @@ const selectionLabel = computed(() => {
 
 const selectedColumnWidth = computed(() => selectedCell.value ? grid.value.columnWidths[selectedCell.value.column] : 140)
 
+function snapshotTable(): TemplateTable {
+  // Template data is JSON-only; serialization unwraps nested Vue proxies as well.
+  return JSON.parse(JSON.stringify(table.value)) as TemplateTable
+}
+
 function rememberGrid() {
-  undoStack.value.push(structuredClone(grid.value))
+  undoStack.value.push(snapshotTable())
   if (undoStack.value.length > 30) undoStack.value.shift()
   redoStack.value = []
 }
@@ -45,16 +63,16 @@ function rememberGrid() {
 function undo() {
   const previous = undoStack.value.pop()
   if (!previous) return
-  redoStack.value.push(structuredClone(grid.value))
-  table.value.grid = previous
+  redoStack.value.push(snapshotTable())
+  table.value = previous
   selection.value = null
 }
 
 function redo() {
   const next = redoStack.value.pop()
   if (!next) return
-  undoStack.value.push(structuredClone(grid.value))
-  table.value.grid = next
+  undoStack.value.push(snapshotTable())
+  table.value = next
   selection.value = null
 }
 
@@ -71,17 +89,29 @@ function isSelected(cell: SpreadsheetCell) {
   return cell.row <= endRow && cell.row + cell.rowSpan - 1 >= startRow && cell.column <= endColumn && cell.column + cell.colSpan - 1 >= startColumn
 }
 
-function selectCell(cell: SpreadsheetCell) {
+function startSelection(event: PointerEvent, cell: SpreadsheetCell) {
+  if (event.button !== 0) return
+  event.preventDefault()
   localError.value = ''
-  if (!selection.value || selection.value.startRow !== selection.value.endRow || selection.value.startColumn !== selection.value.endColumn) {
-    selection.value = { startRow: cell.row, endRow: cell.row + cell.rowSpan - 1, startColumn: cell.column, endColumn: cell.column + cell.colSpan - 1 }
-    return
-  }
+  dragAnchor.value = cell
+  dragging.value = true
+  batchText.value = ''
+  extendSelection(cell)
+}
+
+function extendSelection(cell: SpreadsheetCell) {
+  const anchor = dragAnchor.value
+  if (!anchor) return
   selection.value = {
-    ...selection.value,
-    endRow: cell.row + cell.rowSpan - 1,
-    endColumn: cell.column + cell.colSpan - 1,
+    startRow: Math.min(anchor.row, cell.row),
+    endRow: Math.max(anchor.row + anchor.rowSpan - 1, cell.row + cell.rowSpan - 1),
+    startColumn: Math.min(anchor.column, cell.column),
+    endColumn: Math.max(anchor.column + anchor.colSpan - 1, cell.column + cell.colSpan - 1),
   }
+}
+
+function dragInto(cell: SpreadsheetCell) {
+  if (dragging.value) extendSelection(cell)
 }
 
 function mergeSelection() {
@@ -107,41 +137,51 @@ function splitSelection() {
 }
 
 function resize(rows: number, columns: number) {
-  const nextRows = Math.max(2, Math.min(201, rows))
-  const nextColumns = Math.max(1, Math.min(30, columns))
+  const nextRows = Math.max(2, Math.min(201, Number.isFinite(rows) ? Math.round(rows) : grid.value.rows))
+  const nextColumns = Math.max(1, Math.min(30, Number.isFinite(columns) ? Math.round(columns) : grid.value.columns))
+  if (nextRows === grid.value.rows && nextColumns === grid.value.columns) return
   rememberGrid()
-  table.value.grid = resizeSpreadsheetGrid(grid.value, nextRows, nextColumns, table.value.fields)
+  const fields = [...table.value.fields]
+  if (nextColumns > grid.value.columns) {
+    while (fields.length < nextColumns) fields.push(createMeasurementField(table.value.id, fields.length, fields))
+  }
+  const resizedGrid = resizeSpreadsheetGrid(grid.value, nextRows, nextColumns, fields)
   const dataRows = nextRows - 1
-  table.value.minimumRows = dataRows
-  table.value.maximumRows = dataRows
+  table.value = { ...table.value, fields, grid: resizedGrid, minimumRows: dataRows, maximumRows: dataRows }
   selection.value = null
   localError.value = ''
 }
 
 function updateSelectedText(value: string) {
-  if (selectedCell.value && selectedCell.value.text !== value) {
+  const targets = selectedCells.value.filter((cell) => cell.kind === 'label' && cell.text !== value)
+  if (targets.length) {
     rememberGrid()
-    selectedCell.value.text = value
+    targets.forEach((cell) => { cell.text = value })
   }
 }
 
 function updateSelectedKind(value: 'label' | 'field') {
-  if (!selectedCell.value) return
-  rememberGrid()
-  selectedCell.value.kind = value
-  if (value === 'field') {
-    selectedCell.value.fieldKey = selectedCell.value.fieldKey || table.value.fields[0]?.key
-    selectedCell.value.text = ''
-  } else {
-    delete selectedCell.value.fieldKey
+  if (!selectedCells.value.length) return
+  if (value === 'field' && selectedCells.value.some((cell) => cell.rowSpan > 1 || cell.colSpan > 1)) {
+    localError.value = '已合并的单元格不能设为数据输入，请先拆分。'
+    return
   }
+  rememberGrid()
+  selectedCells.value.forEach((cell) => {
+    cell.kind = value
+    if (value === 'field') {
+      cell.fieldKey = cell.fieldKey || table.value.fields[cell.column]?.key || table.value.fields[0]?.key
+      cell.text = ''
+    } else delete cell.fieldKey
+  })
+  localError.value = ''
 }
 
 function updateSelectedField(value: string) {
-  if (selectedCell.value && selectedCell.value.fieldKey !== value) {
-    rememberGrid()
-    selectedCell.value.fieldKey = value
-  }
+  const targets = selectedCells.value.filter((cell) => cell.kind === 'field' && cell.fieldKey !== value)
+  if (!targets.length) return
+  rememberGrid()
+  targets.forEach((cell) => { cell.fieldKey = value })
 }
 
 function updateColumnWidth(value: number) {
@@ -158,7 +198,7 @@ function updateFrozenRows(value: number) {
 function cellText(cell: SpreadsheetCell) {
   if (cell.kind === 'label') return cell.text || '空白'
   const field = table.value.fields.find((item) => item.key === cell.fieldKey)
-  return field ? `${field.label}\n${field.symbol || field.key} / ${field.unit}` : '未绑定字段'
+  return field ? `${field.label}\n${field.symbol ? `${field.symbol} / ` : ''}${field.unit}` : '未选择测量项'
 }
 </script>
 
@@ -166,8 +206,8 @@ function cellText(cell: SpreadsheetCell) {
   <div class="spreadsheet-editor">
     <div class="spreadsheet-toolbar">
       <div class="sheet-size-controls">
-        <label>总行数<input :value="grid.rows" type="number" min="2" max="201" @change="resize(Number(($event.target as HTMLInputElement).value), grid.columns)" /></label>
-        <label>总列数<input :value="grid.columns" type="number" min="1" max="30" @change="resize(grid.rows, Number(($event.target as HTMLInputElement).value))" /></label>
+        <label>数据行数（不含表头）<input :value="grid.rows - 1" type="number" min="1" max="200" @change="resize(Number(($event.target as HTMLInputElement).value) + 1, grid.columns)" /></label>
+        <label>测量列数<input :value="grid.columns" type="number" min="1" max="30" @change="resize(grid.rows, Number(($event.target as HTMLInputElement).value))" /></label>
       </div>
       <div class="sheet-actions">
         <button type="button" :disabled="!undoStack.length" @click="undo">撤销</button>
@@ -184,7 +224,7 @@ function cellText(cell: SpreadsheetCell) {
       <label>冻结顶部行数<input :value="grid.frozenRows" type="number" min="0" :max="grid.rows" @change="updateFrozenRows(Number(($event.target as HTMLInputElement).value))" /></label>
       <label>所选列宽<input :value="selectedColumnWidth" type="range" min="80" max="320" step="10" :disabled="!selectedCell" @change="updateColumnWidth(Number(($event.target as HTMLInputElement).value))" /></label>
     </div>
-    <p class="sheet-help">第一次点击选择起点，第二次点击确定矩形终点；数据输入格不能合并。</p>
+    <p class="sheet-help">下方可直接修改每列的测量名称、符号和单位。按住鼠标左键拖动可框选多个单元格，统一设置用途或显示文字；数据输入格不能合并。</p>
     <p v-if="localError" class="sheet-error">{{ localError }}</p>
     <div class="sheet-canvas">
       <table>
@@ -198,22 +238,25 @@ function cellText(cell: SpreadsheetCell) {
               :rowspan="cell.rowSpan"
               :colspan="cell.colSpan"
               :class="['sheet-cell', `cell-${cell.kind}`, { selected: isSelected(cell) }]"
-              @click="selectCell(cell)"
+              @pointerdown="startSelection($event, cell)"
+              @pointerenter="dragInto(cell)"
+              @pointerup="stopDragging"
             >
-              <span v-for="line in cellText(cell).split('\n')" :key="line">{{ line }}</span>
+              <span v-for="(line, lineIndex) in cellText(cell).split('\n')" :key="lineIndex" v-html="renderPhysicsNotation(line)" />
             </td>
           </tr>
         </tbody>
       </table>
     </div>
     <div class="cell-inspector">
-      <div><strong>单元格设置</strong><span>{{ selectionLabel }}</span></div>
+      <div><strong>{{ selectedCells.length > 1 ? '批量设置' : '单元格设置' }}</strong><span>{{ selectionLabel }} · {{ selectedCells.length }} 格</span></div>
       <template v-if="selectedCell">
-        <label>用途<select :value="selectedCell.kind" @change="updateSelectedKind(($event.target as HTMLSelectElement).value as 'label' | 'field')"><option value="label">标题或说明</option><option value="field">数据输入</option></select></label>
-        <label v-if="selectedCell.kind === 'label'">显示文字<input :value="selectedCell.text" @input="updateSelectedText(($event.target as HTMLInputElement).value)" /></label>
-        <label v-else>绑定记录字段<select :value="selectedCell.fieldKey" @change="updateSelectedField(($event.target as HTMLSelectElement).value)"><option value="">请选择</option><option v-for="field in table.fields" :key="field.key" :value="field.key">{{ field.label }} · {{ field.symbol || field.key }} / {{ field.unit }}</option></select></label>
+        <label>用途<select :value="selectedKind" @change="updateSelectedKind(($event.target as HTMLSelectElement).value as 'label' | 'field')"><option v-if="!selectedKind" value="" disabled>用途不一致</option><option value="label">标题或说明</option><option value="field">数据输入</option></select></label>
+        <PhysicsNotationInput v-if="selectedKind === 'label' && selectedCells.length === 1" :model-value="selectedCell.text" label="显示文字" @update:model-value="updateSelectedText($event || '')" />
+        <div v-else-if="selectedKind === 'label'" class="bulk-text-control"><PhysicsNotationInput v-model="batchText" label="统一显示文字" placeholder="输入后应用到所选单元格" /><button class="bulk-apply-button" type="button" @click="updateSelectedText(batchText)">应用</button></div>
+        <label v-else-if="selectedKind === 'field'">所选格记录的测量项<select :value="selectedCells.every((cell) => cell.fieldKey === selectedCell?.fieldKey) ? selectedCell?.fieldKey : ''" @change="updateSelectedField(($event.target as HTMLSelectElement).value)"><option value="">请选择</option><option v-for="field in table.fields" :key="field.key" :value="field.key">{{ field.label }} · {{ field.symbol || '未设符号' }} / {{ field.unit }}</option></select></label>
       </template>
-      <p v-else>点击表格中的单元格后，可设置其内容或绑定数据字段。</p>
+      <p v-else>按住鼠标左键拖动选择单元格，再设置显示文字或要记录的测量项。</p>
     </div>
   </div>
 </template>

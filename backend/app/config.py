@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     session_hours: int = 24 * 30
     cookie_secure: bool = False
     demo_auth_enabled: bool = False
-    demo_student_account: str = "20260001"
     demo_teacher_account: str = "t0001"
     demo_admin_account: str = "admin"
     allowed_origins: list[str] = Field(
