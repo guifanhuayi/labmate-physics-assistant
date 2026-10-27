@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BrandLockup from '../components/BrandLockup.vue'
 import { ApiError } from '../api/client'
@@ -34,8 +34,13 @@ const loading = ref(true)
 const pageError = ref('')
 const pageWarning = ref('')
 const offline = ref(!navigator.onLine)
-const mobileKeypad = ref(window.matchMedia('(max-width: 680px)').matches)
+const keypadMedia = window.matchMedia('(max-width: 1024px), (pointer: coarse)')
+const mobileKeypad = ref(keypadMedia.matches)
 const activeNumeric = ref<{ table: TemplateTable; cell: SpreadsheetCell; field: TemplateField } | null>(null)
+const keypadElement = ref<HTMLElement | null>(null)
+const headerElement = ref<HTMLElement | null>(null)
+let numericInput: HTMLElement | null = null
+let resizeFrame = 0
 const draft = reactive<DatasetState>(makeState())
 const shared = reactive<DatasetState>(makeState())
 const schema = computed(() => assignment.value
@@ -160,6 +165,30 @@ function keypadPress(token: string) {
   void updateValue(target.table, target.cell, target.field, next)
 }
 
+function onKeypadMediaChange(event: MediaQueryListEvent) {
+  mobileKeypad.value = event.matches
+  void keepNumericVisible()
+}
+async function focusField(table: TemplateTable, cell: SpreadsheetCell, field: TemplateField, event: FocusEvent) {
+  activeNumeric.value = ['number', 'integer'].includes(field.type) ? { table, cell, field } : null
+  numericInput = activeNumeric.value ? event.target as HTMLElement : null
+  await keepNumericVisible()
+}
+async function keepNumericVisible() {
+  await nextTick()
+  if (!mobileKeypad.value || !activeNumeric.value || !numericInput) return
+  // Keep the focused value above the touch keypad, including in landscape.
+  const keypadTop = keypadElement.value?.getBoundingClientRect().top ?? window.innerHeight
+  const headerBottom = Math.max(0, headerElement.value?.getBoundingClientRect().bottom || 0)
+  const inputRect = numericInput.getBoundingClientRect()
+  if (inputRect.bottom > keypadTop - 16) window.scrollBy({ top: inputRect.bottom - keypadTop + 24 })
+  else if (inputRect.top < headerBottom + 16) window.scrollBy({ top: inputRect.top - headerBottom - 16 })
+}
+function onViewportResize() {
+  cancelAnimationFrame(resizeFrame)
+  resizeFrame = requestAnimationFrame(() => void keepNumericVisible())
+}
+
 async function resolveConflict(kind: Kind, key: string, choice: 'mine' | 'server') {
   const state = stateFor(kind)
   if (choice === 'server') {
@@ -213,6 +242,8 @@ function onOnline() { offline.value = false; void sync('draft'); if (assignment.
 function onOffline() { offline.value = true }
 
 onMounted(async () => {
+  keypadMedia.addEventListener('change', onKeypadMediaChange)
+  window.addEventListener('resize', onViewportResize)
   const key = `user:${auth.user?.id}:assignment:${id}:template`
   try {
     assignment.value = await stage4Api.studentAssignment(id)
@@ -232,6 +263,9 @@ onMounted(async () => {
   window.addEventListener('offline', onOffline)
 })
 onBeforeUnmount(() => {
+  keypadMedia.removeEventListener('change', onKeypadMediaChange)
+  window.removeEventListener('resize', onViewportResize)
+  cancelAnimationFrame(resizeFrame)
   window.removeEventListener('online', onOnline)
   window.removeEventListener('offline', onOffline)
   for (const timer of Object.values(timers)) clearTimeout(timer)
@@ -239,8 +273,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workspace-page">
-    <header class="workspace-header">
+  <div class="workspace-page student-page" :class="{ 'has-numeric-keypad': mobileKeypad && activeNumeric }">
+    <header ref="headerElement" class="workspace-header">
       <BrandLockup />
       <nav aria-label="学生实验"><button type="button" @click="router.push('/student')">← 我的实验</button></nav>
       <div class="account-menu"><span>{{ auth.user?.name }}</span><small>{{ auth.user?.account }}</small></div>
@@ -280,21 +314,18 @@ onBeforeUnmount(() => {
         </section>
         <section v-for="table in schema.tables" :key="table.id" class="work-panel entry-table-panel">
           <h2>{{ table.title }}</h2><p v-if="table.description">{{ table.description }}</p>
-          <div class="entry-table-scroll"><table class="entry-table"><tbody>
+          <p v-if="(table.grid?.columns || 0) > 1" class="entry-scroll-hint">左右滑动表格查看其他测量项，页面可上下滚动。</p>
+          <div class="entry-table-scroll" role="region" :aria-label="`${table.title}，可横向滚动`" tabindex="0"><table class="entry-table" :style="{ '--entry-columns': table.grid?.columns || 1 }"><tbody>
             <tr v-for="row in table.grid?.rows || 0" :key="row">
               <template v-for="cell in rowCells(table, row - 1)" :key="cell.id">
                 <th v-if="cell.kind === 'label'" :rowspan="cell.rowSpan" :colspan="cell.colSpan" scope="col" v-html="renderPhysicsNotation(cell.text)" />
                 <td v-else :rowspan="cell.rowSpan" :colspan="cell.colSpan">
                   <template v-if="fieldFor(table, cell)">
                     <label :for="`${table.id}-${cell.id}`" class="entry-label"><span v-html="renderPhysicsNotation(fieldFor(table, cell)?.label || '')" /><span v-if="fieldFor(table, cell)?.required" aria-label="必填"> *</span></label>
-                    <div v-if="mobileKeypad && activeNumeric?.table.id === table.id && activeNumeric?.cell.id === cell.id" class="numeric-keypad" aria-label="实验数据数字键盘">
-                      <span class="keypad-symbol" v-html="renderPhysicsNotation(`${fieldFor(table, cell)?.label || ''} ${fieldFor(table, cell)?.symbol || ''} / ${fieldFor(table, cell)?.unit || ''}`)" />
-                      <div class="keypad-keys"><button v-for="token in ['1','2','3','4','5','6','7','8','9','−','0','.', '删除', '清空', '完成']" :key="token" type="button" :aria-label="token === '−' ? '负号' : token" @click="keypadPress(token === '−' ? '-' : token)">{{ token }}</button></div>
-                    </div>
                     <div class="entry-input-line">
                       <span v-if="fieldFor(table, cell)?.symbol" class="entry-symbol"><span v-html="renderPhysicsNotation(fieldFor(table, cell)?.symbol || '')" /> =</span>
-                      <select v-if="fieldFor(table, cell)?.type === 'enum'" :id="`${table.id}-${cell.id}`" :value="stateForField(fieldFor(table, cell)!).values[valueKey(table, cell)] || ''" :disabled="!assignment.editable || (kindFor(fieldFor(table, cell)!) === 'shared' && !assignment.group)" @change="changeValue(table, cell, fieldFor(table, cell)!, $event)"><option value="">请选择</option><option v-for="option in fieldFor(table, cell)?.options || []" :key="option" :value="option">{{ option }}</option></select>
-                      <input v-else :id="`${table.id}-${cell.id}`" :value="stateForField(fieldFor(table, cell)!).values[valueKey(table, cell)] || ''" :inputmode="mobileKeypad && ['number', 'integer'].includes(fieldFor(table, cell)!.type) ? 'none' : fieldFor(table, cell)?.type === 'integer' ? 'numeric' : fieldFor(table, cell)?.type === 'number' ? 'decimal' : 'text'" :readonly="mobileKeypad && ['number', 'integer'].includes(fieldFor(table, cell)!.type)" :type="fieldFor(table, cell)?.type === 'time' ? 'datetime-local' : 'text'" :disabled="!assignment.editable || fieldFor(table, cell)?.type === 'image' || (kindFor(fieldFor(table, cell)!) === 'shared' && !assignment.group)" :aria-invalid="!!formatError(fieldFor(table, cell)!, stateForField(fieldFor(table, cell)!).values[valueKey(table, cell)] || '')" @focus="activeNumeric = ['number', 'integer'].includes(fieldFor(table, cell)!.type) ? { table, cell, field: fieldFor(table, cell)! } : null" @input="changeValue(table, cell, fieldFor(table, cell)!, $event)" />
+                      <select v-if="fieldFor(table, cell)?.type === 'enum'" :id="`${table.id}-${cell.id}`" :value="stateForField(fieldFor(table, cell)!).values[valueKey(table, cell)] || ''" :disabled="!assignment.editable || (kindFor(fieldFor(table, cell)!) === 'shared' && !assignment.group)" @focus="activeNumeric = null" @change="changeValue(table, cell, fieldFor(table, cell)!, $event)"><option value="">请选择</option><option v-for="option in fieldFor(table, cell)?.options || []" :key="option" :value="option">{{ option }}</option></select>
+                      <input v-else :id="`${table.id}-${cell.id}`" :value="stateForField(fieldFor(table, cell)!).values[valueKey(table, cell)] || ''" :inputmode="mobileKeypad && ['number', 'integer'].includes(fieldFor(table, cell)!.type) ? 'none' : fieldFor(table, cell)?.type === 'integer' ? 'numeric' : fieldFor(table, cell)?.type === 'number' ? 'decimal' : 'text'" :readonly="mobileKeypad && ['number', 'integer'].includes(fieldFor(table, cell)!.type)" :type="fieldFor(table, cell)?.type === 'time' ? 'datetime-local' : 'text'" :disabled="!assignment.editable || fieldFor(table, cell)?.type === 'image' || (kindFor(fieldFor(table, cell)!) === 'shared' && !assignment.group)" :aria-invalid="!!formatError(fieldFor(table, cell)!, stateForField(fieldFor(table, cell)!).values[valueKey(table, cell)] || '')" @focus="focusField(table, cell, fieldFor(table, cell)!, $event)" @input="changeValue(table, cell, fieldFor(table, cell)!, $event)" />
                       <span v-if="fieldFor(table, cell)?.unit" class="entry-unit" v-html="renderPhysicsNotation(fieldFor(table, cell)?.unit || '')" />
                     </div>
                     <small v-if="kindFor(fieldFor(table, cell)!) === 'shared'" class="entry-source">组内共享<span v-if="shared.sources[valueKey(table, cell)]"> · {{ shared.sources[valueKey(table, cell)].editorName }} 于 {{ new Date(shared.sources[valueKey(table, cell)].editedAt).toLocaleString('zh-CN') }} 修改</span></small>
@@ -307,30 +338,49 @@ onBeforeUnmount(() => {
         </section>
       </template>
     </main>
+    <aside v-if="mobileKeypad && activeNumeric" ref="keypadElement" class="numeric-keypad" aria-label="实验数据数字键盘">
+      <div class="keypad-heading">
+        <span class="keypad-symbol" v-html="renderPhysicsNotation(`${activeNumeric.field.label} ${activeNumeric.field.symbol || ''} / ${activeNumeric.field.unit || ''}`)" />
+        <output aria-label="当前数值">{{ stateForField(activeNumeric.field).values[valueKey(activeNumeric.table, activeNumeric.cell)] || '未填写' }}</output>
+      </div>
+      <div class="keypad-keys"><button v-for="token in ['1','2','3','4','5','6','7','8','9','−','0','.', '删除', '清空', '完成']" :key="token" type="button" :aria-label="token === '−' ? '负号' : token" @click="keypadPress(token === '−' ? '-' : token)">{{ token }}</button></div>
+    </aside>
   </div>
 </template>
 
 <style scoped>
-.entry-shell { display: grid; gap: 18px; }
+.entry-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .entry-notice { margin: 0; padding: 12px 16px; border-radius: 10px; background: #fff4da; color: #614315; }
 .entry-status { display: flex; gap: 18px; flex-wrap: wrap; padding: 12px 16px; border-radius: 10px; background: #e8f3f0; }
 .entry-status span { font-size: .91rem; }
+.entry-table-panel { min-width: 0; }
 .entry-table-panel h2 { margin-bottom: 8px; }
-.entry-table-scroll { overflow-x: auto; width: 100%; margin-top: 15px; }
-.entry-table { width: 100%; border-collapse: collapse; min-width: 560px; }
-.entry-table th, .entry-table td { min-width: 150px; border: 1px solid #d8e4e5; padding: 10px; vertical-align: top; }
+.entry-scroll-hint { color: #526b80; font-size: .875rem; }
+.entry-table-scroll { overflow-x: auto; width: 100%; margin-top: 12px; overscroll-behavior-x: contain; }
+.entry-table-scroll:focus-visible { outline: 3px solid #2369b6; outline-offset: 2px; }
+.entry-table { --entry-cell-width: 184px; width: max(100%, calc(var(--entry-columns) * var(--entry-cell-width))); border-collapse: collapse; table-layout: fixed; }
+.entry-table th, .entry-table td { border: 1px solid #d8e4e5; padding: 10px; vertical-align: top; overflow-wrap: anywhere; }
 .entry-table th { background: #e9f2f0; text-align: left; }
 .entry-label { display: block; font-size: .81rem; font-weight: 600; margin: 0 0 5px; }
 .entry-input-line { display: flex; gap: 5px; align-items: center; }
-.entry-input-line input, .entry-input-line select { min-width: 75px; width: 100%; padding: 8px; }
-.entry-symbol, .entry-unit { white-space: nowrap; font-size: .8rem; }
+.entry-input-line { flex-wrap: wrap; }
+.entry-input-line input, .entry-input-line select { min-width: 0; flex: 1 1 88px; width: 100%; padding: 8px; font-size: 16px; }
+.entry-symbol, .entry-unit { overflow-wrap: anywhere; max-width: 100%; font-size: .875rem; }
 .entry-source { display: block; margin-top: 5px; color: #496864; }
 .entry-error { display: block; margin-top: 5px; color: #ad3232; }
-.numeric-keypad { margin: 6px 0; padding: 6px; border: 1px solid #b2cedc; background: #f1f8fa; }
-.keypad-symbol { display: block; font-size: .75rem; padding-bottom: 5px; white-space: nowrap; }
-.keypad-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.keypad-keys button { min-height: 38px; border: 1px solid #b2cedc; background: white; font-size: .83rem; }
+.numeric-keypad { position: fixed; z-index: 20; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, 480px); max-height: 65dvh; overflow-y: auto; padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border: 1px solid #9cb9cf; border-top: 3px solid #2369b6; background: #edf5fc; box-shadow: 0 -6px 24px #15344c30; }
+.keypad-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
+.keypad-symbol { font-size: .875rem; }
+.keypad-heading output { min-width: 0; font-size: 1.1rem; font-weight: 750; }
+.keypad-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.keypad-keys button { min-height: 44px; border: 1px solid #9cb9cf; background: white; font-size: 1rem; touch-action: manipulation; }
+.keypad-keys button:last-child { background: #176c62; color: white; border-color: #176c62; }
+.has-numeric-keypad .entry-shell { padding-bottom: calc(390px + env(safe-area-inset-bottom)); }
 .conflict-item { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid #ddd; }
 .conflict-item span { padding: 6px; background: #f5f6f5; }
-@media (max-width: 680px) { .entry-shell { gap: 12px; } .entry-table th, .entry-table td { min-width: 135px; padding: 7px; } }
+@media (min-width: 768px) { .entry-table { --entry-cell-width: 210px; } }
+@media (max-height: 520px) {
+  .keypad-keys { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .has-numeric-keypad .entry-shell { padding-bottom: calc(250px + env(safe-area-inset-bottom)); }
+}
 </style>

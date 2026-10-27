@@ -30,7 +30,7 @@ async function signOut() { await auth.logout(); await router.replace('/login') }
 </script>
 
 <template>
-  <div class="workspace-page">
+  <div class="workspace-page student-page">
     <header class="workspace-header">
       <BrandLockup />
       <nav aria-label="当前工作台"><span class="active-nav">学生工作台</span></nav>
@@ -58,11 +58,16 @@ async function signOut() { await auth.logout(); await router.replace('/login') }
 </template>
 
 <style scoped>
-.student-shell { display: grid; gap: 22px; }
+.student-shell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .student-assignment-list { display: grid; gap: 14px; margin-top: 18px; }
-.student-assignment-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px; border: 1px solid #dce6e7; border-radius: 14px; }
+.student-assignment-card { display: flex; align-items: stretch; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #b9c9db; background: #fff; overflow-wrap: anywhere; }
+.student-assignment-card > div { min-width: 0; }
+.student-assignment-card button { margin: 0; }
 .student-assignment-card strong { font-size: 1.1rem; }
 .student-assignment-card p { margin: 8px 0; }
 .student-assignment-card small { color: #647477; }
-@media (max-width: 680px) { .student-assignment-card { align-items: stretch; flex-direction: column; } }
+@media (min-width: 768px) {
+  .student-assignment-card { align-items: center; flex-direction: row; justify-content: space-between; gap: 20px; }
+  .student-assignment-card button { flex: 0 0 132px; width: auto; }
+}
 </style>

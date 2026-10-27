@@ -1,0 +1,16 @@
+:host { display: block; min-height: 100dvh; color: #1f2329; background: #f5f7fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; line-height: 1.5715; }
+.admin-pro-root { min-height: 100dvh; }
+.admin-pro-root *, .admin-pro-root *::before, .admin-pro-root *::after { box-sizing: border-box; }
+.admin-menu-link { display: block; width: 100%; padding: 0; color: inherit; background: transparent; border: 0; font: inherit; text-align: left; cursor: pointer; }
+.admin-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.admin-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.admin-roster { max-width: 860px; }
+.admin-feedback { margin-bottom: 20px; }
+.admin-preview { margin-top: 24px; }
+.admin-footer { padding: 20px; color: #8c8c8c; text-align: center; }
+.admin-pro-root button { transition: transform 160ms ease, box-shadow 160ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .admin-pro-root button:enabled:hover { transform: translateY(-1px) scale(1.015); box-shadow: 0 4px 12px #1677ff24; }
+}
+@media (prefers-reduced-motion: reduce) { .admin-pro-root button { transition: none; transform: none !important; } }
+@media (max-width: 767px) { .admin-metrics { grid-template-columns: 1fr; } }

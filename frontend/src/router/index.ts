@@ -14,7 +14,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/student', name: 'student', component: StudentWorkspacePage, meta: { role: 'student' } },
   { path: '/student/assignments/:id', name: 'student-assignment', component: StudentAssignmentPage, meta: { role: 'student' } },
   { path: '/teacher', name: 'teacher', component: ManagementPage, meta: { role: 'teacher' } },
-  { path: '/admin', name: 'admin', component: ManagementPage, meta: { role: 'admin' } },
+  { path: '/admin', name: 'admin', component: () => import('../pages/AdminPage.vue'), meta: { role: 'admin' } },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, toRaw } from 'vue'
+import { computed, ref, toRaw, watch } from 'vue'
 import { ApiError, managementApi, type TemplateView } from '../api/client'
 import SpreadsheetTableEditor from './SpreadsheetTableEditor.vue'
 import PhysicsNotationInput from './PhysicsNotationInput.vue'
@@ -24,6 +24,9 @@ const props = defineProps<{ templates: TemplateView[] }>()
 const emit = defineEmits<{ refresh: []; published: [versionId: string] }>()
 
 const draft = ref<TemplateSchema>(createMechanicsTemplate())
+const tableEditors = ref<Array<{ flush?: () => Promise<void> }>>([])
+const editorSession = ref(0)
+watch(draft, () => { editorSession.value++ })
 const selectedTemplateId = ref('')
 const busy = ref(false)
 const status = ref('已根据《力学综合实验》报告整理出操作步骤、4 张数据表和 3 张图表。')
@@ -252,6 +255,7 @@ async function saveAndValidate() {
   status.value = ''
   validationIssues.value = []
   try {
+    await Promise.all(tableEditors.value.map(editor => editor.flush?.()))
     syncChecks()
     let templateId = selectedTemplateId.value
     if (!templateId) {
@@ -325,7 +329,7 @@ async function publishDraft() {
       <div class="designer-toolbar">
         <div><p class="eyebrow">可视化实验模板</p><h2>{{ draft.title }}</h2></div>
         <div class="toolbar-actions">
-          <button class="secondary-button compact-button" type="button" :disabled="busy" @click="saveAndValidate">保存并检查</button>
+          <button class="secondary-button save-button compact-button" type="button" :disabled="busy" @click="saveAndValidate">保存并检查</button>
           <button class="primary-button compact-button" type="button" :disabled="busy" @click="publishDraft">发布新版本</button>
         </div>
       </div>
@@ -338,7 +342,7 @@ async function publishDraft() {
         <li v-for="issue in validationIssues" :key="`${issue.path}-${issue.message}`"><code>{{ issue.path }}</code>{{ issue.message }}</li>
       </ul>
 
-      <section class="designer-section">
+      <section class="designer-section information-section">
         <div class="section-title"><span>1</span><div><h3>实验基本信息</h3><p>学生看到的实验名称、目的和说明。</p></div></div>
         <label>实验名称</label><input v-model="draft.title" required />
         <label>实验说明</label><textarea v-model="draft.description" rows="3" />
@@ -350,7 +354,7 @@ async function publishDraft() {
         <textarea :value="draft.discussionQuestions.join('\n')" rows="6" @input="draft.discussionQuestions = ($event.target as HTMLTextAreaElement).value.split('\n').filter(Boolean)" />
       </section>
 
-      <section class="designer-section">
+      <section class="designer-section steps-section">
         <div class="section-title"><span>2</span><div><h3>实验操作步骤</h3><p>把操作说明和对应数据表绑定，学生按顺序完成。</p></div></div>
         <article v-for="(step, index) in draft.steps" :key="step.id" class="editor-card">
           <div class="editor-card-heading"><strong>步骤 {{ index + 1 }}</strong><button class="text-danger" type="button" @click="draft.steps.splice(index, 1)">移除</button></div>
@@ -364,7 +368,7 @@ async function publishDraft() {
         <button class="add-button" type="button" @click="addStep">＋ 添加实验步骤</button>
       </section>
 
-      <section class="designer-section">
+      <section class="designer-section data-section">
         <div class="section-title"><span>3</span><div><h3>需要记录的数据</h3><p>每张表按“每行一个测量条件”配置，更适合手机录入。</p></div></div>
         <div class="table-create-controls">
           <label>新表格数据行数<input v-model.number="newTableRows" aria-label="新表格数据行数" type="number" min="1" max="200" /></label>
@@ -377,7 +381,7 @@ async function publishDraft() {
           <div class="editor-card-heading"><strong>数据表 {{ tableIndex + 1 }} · {{ table.title }} · {{ (table.grid?.rows || table.minimumRows + 1) - 1 }} 行 × {{ table.grid?.columns || table.fields.length }} 列</strong><button class="text-danger" type="button" @click="draft.tables.splice(tableIndex, 1)">移除</button></div>
           <label>数据表名称</label><input v-model="table.title" />
           <label>测量说明</label><input v-model="table.description" />
-          <SpreadsheetTableEditor v-model="draft.tables[tableIndex]" />
+          <SpreadsheetTableEditor :key="`${editorSession}:${table.id}`" ref="tableEditors" v-model="draft.tables[tableIndex]" />
           <div class="field-editor-header"><strong>每列记录什么</strong><span>先填写名称与符号，学生录入时会按此显示。</span></div>
           <div v-for="(field, fieldIndex) in table.fields" :key="`${table.id}-${fieldIndex}`" class="measurement-card">
             <div class="measurement-card-heading"><strong>第 {{ fieldIndex + 1 }} 列</strong><button class="text-danger" type="button" :disabled="table.fields.length <= 1" :aria-label="`删除测量项 ${field.label}`" @click="removeField(table, fieldIndex)">删除这一项</button></div>
@@ -412,7 +416,7 @@ async function publishDraft() {
         </article>
       </section>
 
-      <section class="designer-section">
+      <section class="designer-section calculation-section">
         <div class="section-title"><span>4</span><div><h3>公式与计算结果</h3><p>选择测量数据组成公式，无需输入内部编号或复杂符号。</p></div></div>
         <article v-for="(calculation, index) in draft.calculations" :key="`${calculation.key}-${index}`" class="editor-card">
           <div class="editor-card-heading"><strong>{{ calculation.label }}</strong><button class="text-danger" type="button" @click="draft.calculations.splice(index, 1)">移除</button></div>
@@ -434,7 +438,7 @@ async function publishDraft() {
         <button class="add-button" type="button" @click="addCalculation">＋ 添加计算</button>
       </section>
 
-      <section class="designer-section">
+      <section class="designer-section requirements-section">
         <div class="section-title"><span>5</span><div><h3>图表与提交要求</h3><p>选择横纵坐标和拟合方式，同时指定学生需要提交的结果。</p></div></div>
         <article v-for="(chart, index) in draft.charts" :key="`${chart.title}-${index}`" class="editor-card chart-editor">
           <input v-model="chart.title" aria-label="图表名称" placeholder="图表名称" />

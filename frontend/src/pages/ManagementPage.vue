@@ -213,7 +213,7 @@ onMounted(loadData)
       <p v-if="message" class="success-message" role="status">{{ message }}</p>
 
       <section v-if="activeSection === 'classes'" class="management-grid">
-        <form class="work-panel" @submit.prevent="createClass">
+        <form class="work-panel information-section" @submit.prevent="createClass">
           <div class="panel-heading"><p>01</p><h2>创建班级</h2></div>
           <label>班级代码</label><input v-model="classForm.classCode" required />
           <label>班级名称</label><input v-model="classForm.className" required />
@@ -221,7 +221,7 @@ onMounted(loadData)
           <template v-if="!isTeacher"><label>负责教师</label><select v-model="classForm.teacherId" required><option value="">请选择教师</option><option v-for="teacher in teachers" :key="teacher.id" :value="teacher.id">{{ teacher.name }} · {{ teacher.account }}</option></select></template>
           <button class="primary-button" :disabled="busy">创建班级</button>
         </form>
-        <div class="work-panel">
+        <div class="work-panel data-section">
           <div class="panel-heading"><p>02</p><h2>名单预览与导入</h2></div>
           <label>目标班级</label>
           <select v-model="rosterClassId"><option value="">请选择</option><option v-for="item in classes" :key="item.id" :value="item.id">{{ item.classCode }} · {{ item.className }}</option></select>
@@ -234,7 +234,7 @@ onMounted(loadData)
             <button v-else class="primary-button" :disabled="busy" @click="commitRoster">确认导入</button>
           </div>
         </div>
-        <div class="work-panel panel-wide">
+        <div class="work-panel panel-wide preview-section">
           <div class="panel-heading"><p>当前</p><h2>班级列表</h2></div>
           <div class="data-list class-list">
             <article v-for="item in classes" :key="item.id" class="class-card">
@@ -266,7 +266,7 @@ onMounted(loadData)
       </section>
 
       <section v-else class="management-grid">
-        <form class="work-panel" @submit.prevent="publishAssignment">
+        <form class="work-panel information-section" @submit.prevent="publishAssignment">
           <div class="panel-heading"><p>01</p><h2>创建班级实验任务</h2></div>
           <label>任务名称</label><input v-model="assignment.title" required />
           <label>已发布模板版本</label><select v-model="assignment.templateVersionId" required><option value="">请选择</option><option v-for="item in templates.filter((value) => value.latestVersionId)" :key="item.id" :value="item.latestVersionId || ''">{{ item.name }} · v{{ item.versionCount }}</option></select>
@@ -275,12 +275,12 @@ onMounted(loadData)
           <label class="checkbox-label"><input v-model="assignment.groupSharingEnabled" type="checkbox" />允许本任务的小组共享模板中标记为“组内共享”的测量数据</label>
           <button class="primary-button" :disabled="busy">发布实验任务</button>
         </form>
-        <div class="work-panel">
+        <div class="work-panel requirements-section">
           <div class="panel-heading"><p>02</p><h2>发布前检查</h2></div>
           <ol class="publish-checklist"><li :class="{ done: assignment.templateVersionId }">使用已发布且不可变的模板版本</li><li :class="{ done: assignment.classId }">选择接收任务的班级</li><li :class="{ done: assignment.startAt && assignment.dueAt }">设置开放和截止时间</li></ol>
           <p class="field-help">任务发布后，学生始终引用选定的模板版本；以后修改模板不会改变已发布任务。</p>
         </div>
-        <div class="work-panel panel-wide">
+        <div class="work-panel panel-wide data-section">
           <div class="panel-heading"><p>当前</p><h2>实验任务</h2></div>
           <div class="assignment-list">
             <article v-for="item in assignments" :key="item.id" class="assignment-with-groups">
@@ -292,7 +292,7 @@ onMounted(loadData)
             <p v-if="!assignments.length" class="muted-copy">尚未发布实验任务。</p>
           </div>
         </div>
-        <div class="work-panel panel-wide">
+        <div class="work-panel panel-wide requirements-section">
           <div class="panel-heading"><p>30 天</p><h2>已删除任务 · 可恢复</h2></div>
           <div class="assignment-list">
             <article v-for="item in deletedAssignments" :key="item.id" class="deleted-assignment-row"><div><strong>{{ item.title }}</strong><span>{{ item.className }} · {{ item.templateName }} v{{ item.versionNumber }}</span><small>预计永久清理：{{ item.purgeAfter ? new Date(item.purgeAfter).toLocaleString('zh-CN') : '待确认' }}</small></div><button type="button" class="secondary-button compact-button" :disabled="busy" @click="restoreAssignment(item)">恢复任务与数据</button></article>
